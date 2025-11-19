@@ -1,0 +1,144 @@
+{
+  "name": "config-editor",
+  "displayName": "Config Editor",
+  "description": "Tree based JSON config editor with schema-aware editing.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.106.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:config-editor.openConfig",
+    "onCommand:config-editor.editValue",
+    "onCommand:config-editor.refresh",
+    "onCommand:config-editor.chooseSchema",
+    "onCommand:config-editor.openVisualEditor",
+    "onView:config-editor.configTree"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "config-editor.configTree",
+          "name": "Config Editor"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "config-editor.openConfig",
+        "title": "Open Config (Tree)",
+        "shortTitle": "Open Config"
+      },
+      {
+        "command": "config-editor.refresh",
+        "title": "Reload Config Tree"
+      },
+      {
+        "command": "config-editor.editValue",
+        "title": "Edit Value"
+      },
+      {
+        "command": "config-editor.chooseSchema",
+        "title": "Select Schema File"
+      },
+      {
+        "command": "config-editor.openVisualEditor",
+        "title": "Open Config Editor Panel",
+        "shortTitle": "Open Panel"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "config-editor.openConfig",
+          "when": "view == config-editor.configTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "config-editor.refresh",
+          "when": "view == config-editor.configTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "config-editor.chooseSchema",
+          "when": "view == config-editor.configTree",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "config-editor.editValue",
+          "when": "view == config-editor.configTree && viewItem == configValue",
+          "group": "inline"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "config-editor.openConfig",
+          "when": "resourceExtname == .json",
+          "group": "navigation"
+        },
+        {
+          "command": "config-editor.openVisualEditor",
+          "when": "resourceExtname == .json",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Config Editor",
+      "properties": {
+        "configEditor.schemaSuffix": {
+          "type": "string",
+          "default": "_Schema",
+          "description": "Suffix appended to the base file name when automatically locating schema files."
+        },
+        "configEditor.schemaSearchPaths": {
+          "type": "array",
+          "description": "Additional folders that should be scanned for schema files. Relative paths are resolved from the workspace root.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "configEditor.indentSize": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Number of spaces used when Config Editor writes JSON changes."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.106.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint": "^9.36.0",
+    "esbuild": "^0.25.10",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
