@@ -1,6 +1,6 @@
 {
   "name": "json-value-editor",
-  "displayName": "Json Editor",
+  "displayName": "JSON Value Editor",
   "publisher": "GuoZhihai",
   "description": "Tree based JSON config editor with schema-aware editing.",
   "icon": "media/config_editor.png",
@@ -9,7 +9,7 @@
     "url": "https://github.com/guozhihai/json_editor.git"
   },
   "license": "MIT",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "engines": {
     "vscode": "^1.106.0"
   },
