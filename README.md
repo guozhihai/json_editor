@@ -1,28 +1,30 @@
 # JSON Value Editor
 
-JSON/JSONC の設定ファイルを「ツリー＋フォーム」で編集する VS Code 拡張です。スキーマ(JSON)を参照し、型チェックや選択肢の制限をサポートします。
+English README: see `README.en.md`.
+
+JSON/JSONC の設定ファイルを "ツリー + フォーム" で編集する VS Code 拡張です。スキーマ(JSON)を参照し、型チェックや選択肢の制限をサポートします。
 
 ## Features
 
 1. **Tree 表示**: JSON を階層表示し、ノードを辿りながら値を編集できます。
 2. **キー名は保持**: 値のみを編集し、キー名は常に元ファイルのまま維持します。
 3. **スキーマ連携**:
-   - 同名ファイルに `_Schema` サフィックスを付けた JSON を自動検出（例: `config.json` ↔ `config_Schema.json`）。
-   - コマンド「Select Schema File」から任意のスキーマを手動指定／解除。
+   - 同名ファイルに `_Schema` サフィックスを付けた JSON を自動検出（例: `config.json` <-> `config_Schema.json`）。
+   - コマンド `Select Schema File` から任意のスキーマを手動指定／解除。
    - スキーマが無い場合は通常の JSON として扱います。
 4. **スキーマで定義できるもの**:
-   - ノード単位の表示/非表示（`visible`）。
+   - ノードごとの表示/非表示（`visible`）。
    - ラベル表示名（`label`）と説明（`description`）。
-   - 値の範囲／選択肢（`range.min/max` または 配列 `range`）。
+   - 値の範囲や選択肢（`range.min/max` または 配列 `range`）。
    - 型ヒント（`string` / `enum` / `integer` / `number` / `boolean`）。
 
 ## Getting Started
 
 ### Explorer ツリービュー
 1. 拡張をインストール後、エクスプローラーに表示される **Config Editor** ビューを開きます。
-2. コマンドパレット or ビュータイトルの **Open Config (Tree)** を実行し、アクティブな JSON ファイルまたはダイアログで選んだファイルを読み込みます。
+2. コマンドパレットまたはビュータイトルの **Open Config (Tree)** を実行し、アクティブな JSON ファイルまたはダイアログで選んだファイルを読み込みます。
 3. ツリーでノードを選択し、右クリックの **Edit Value** またはインラインの編集ボタンで値を更新します。
-   - 数値／ブールなどは型に応じたバリデーションを実行します。
+   - 数値/ブールなどは型に応じたバリデーションを実行します。
    - スキーマで選択肢を定義している場合は QuickPick が表示されます。
 4. **Reload Config Tree** で外部変更を再読込できます。
 5. **Select Schema File** でスキーマを手動指定／解除できます。
@@ -103,4 +105,4 @@ JSON/JSONC の設定ファイルを「ツリー＋フォーム」で編集する
 
 ---
 
-Made with ❤︎ for JSON config editing workflows.
+Made with love for JSON config editing workflows.
