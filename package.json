@@ -1,5 +1,5 @@
 {
-  "name": "config-editor",
+  "name": "json-value-editor",
   "displayName": "Config Editor",
   "publisher": "GuoZhihai",
   "description": "Tree based JSON config editor with schema-aware editing.",
@@ -9,7 +9,7 @@
     "url": "https://github.com/guozhihai/json_editor.git"
   },
   "license": "MIT",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "engines": {
     "vscode": "^1.106.0"
   },

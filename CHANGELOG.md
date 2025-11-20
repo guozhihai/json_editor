@@ -4,6 +4,10 @@ All notable changes to the "config-editor" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.2] - 2025-11-20
+
+- Renamed extension package name to `json-value-editor` for Marketplace uniqueness.
+
 ## [0.1.1] - 2025-11-20
 
 - Added extension icon so the Marketplace listing and VS Code show branded artwork.
