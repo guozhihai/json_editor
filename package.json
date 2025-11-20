@@ -3,7 +3,7 @@
   "displayName": "Config Editor",
   "description": "Tree based JSON config editor with schema-aware editing.",
   "icon": "media/config_editor.png",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.106.0"
   },
