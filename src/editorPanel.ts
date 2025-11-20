@@ -1029,6 +1029,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 			}
 
 			function buildNodes(value, segments, parent, filter) {
+				let added = false;
 				if (Array.isArray(value)) {
 					value.forEach((entry, index) => {
 						const childSegments = [...segments, index];
@@ -1036,10 +1037,25 @@ export class JsonEditorPanel implements vscode.Disposable {
 						if (!isVisibleNode(pathKey, entry, childSegments)) {
 							return;
 						}
-						const displayLabel = '[' + index + ']';
-						appendNode('[' + index + ']', entry, childSegments, parent, filter, pathKey, displayLabel);
+						const rawKey = '[' + index + ']';
+						const displayLabel = rawKey;
+						const textValue = formatValue(entry);
+						const nodeMatches = matchesFilter(displayLabel, rawKey, textValue, filter);
+						if (isContainer(entry)) {
+							const nestedList = document.createElement('ul');
+							const childAdded = buildNodes(entry, childSegments, nestedList, filter);
+							if (!filter || nodeMatches || childAdded) {
+								appendNode(rawKey, entry, childSegments, parent, filter, pathKey, displayLabel, nestedList);
+								added = true;
+							}
+						} else {
+							if (!filter || nodeMatches) {
+								appendNode(rawKey, entry, childSegments, parent, filter, pathKey, displayLabel, null);
+								added = true;
+							}
+						}
 					});
-					return;
+					return added;
 				}
 
 				if (value && typeof value === 'object') {
@@ -1051,9 +1067,26 @@ export class JsonEditorPanel implements vscode.Disposable {
 						}
 						const schemaEntry = schema[pathKey];
 						const displayLabel = !schemaEditMode && schemaEntry?.label ? schemaEntry.label : key;
-						appendNode(key, value[key], childSegments, parent, filter, pathKey, displayLabel);
+						const textValue = formatValue(value[key]);
+						const nodeMatches = matchesFilter(displayLabel || key, key, textValue, filter);
+						const childValue = value[key];
+						if (isContainer(childValue)) {
+							const nestedList = document.createElement('ul');
+							const childAdded = buildNodes(childValue, childSegments, nestedList, filter);
+							if (!filter || nodeMatches || childAdded) {
+								appendNode(key, childValue, childSegments, parent, filter, pathKey, displayLabel, nestedList);
+								added = true;
+							}
+						} else {
+							if (!filter || nodeMatches) {
+								appendNode(key, childValue, childSegments, parent, filter, pathKey, displayLabel, null);
+								added = true;
+							}
+						}
 					});
 				}
+
+				return added;
 			}
 
 			function registerBranchControl(pathKey, toggle, nestedList) {
@@ -1213,12 +1246,12 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 			}
 
-			function appendNode(label, value, segments, parent, filter, pathKey, displayLabel) {
+			function appendNode(label, value, segments, parent, filter, pathKey, displayLabel, nestedList) {
 				const li = document.createElement('li');
 				const header = document.createElement('div');
 				header.className = 'node-header';
 				const isBranch = isContainer(value);
-				let nestedList;
+				let childList = nestedList;
 
 				if (isBranch) {
 					const toggle = document.createElement('button');
@@ -1226,8 +1259,10 @@ export class JsonEditorPanel implements vscode.Disposable {
 					toggle.type = 'button';
 					toggle.textContent = '-';
 					header.appendChild(toggle);
-					nestedList = document.createElement('ul');
-					registerBranchControl(pathKey, toggle, nestedList);
+					if (!childList) {
+						childList = document.createElement('ul');
+					}
+					registerBranchControl(pathKey, toggle, childList);
 					toggle.addEventListener('click', (event) => {
 						event.stopPropagation();
 						toggleBranchState(pathKey);
@@ -1242,9 +1277,8 @@ export class JsonEditorPanel implements vscode.Disposable {
 				header.appendChild(button);
 				li.appendChild(header);
 
-				if (isBranch && nestedList) {
-					li.appendChild(nestedList);
-					buildNodes(value, segments, nestedList, filter);
+				if (isBranch && childList) {
+					li.appendChild(childList);
 				}
 
 				parent.appendChild(li);
@@ -1583,6 +1617,13 @@ export class JsonEditorPanel implements vscode.Disposable {
 					return Array.isArray(value) ? '[...]' : '{...}';
 				}
 				return String(value);
+			}
+
+			function matchesFilter(displayLabel, rawKey, textValue, filter) {
+				if (!filter) {
+					return true;
+				}
+				return (displayLabel + ' ' + rawKey + ' ' + textValue).toLowerCase().includes(filter);
 			}
 
 			function isContainer(value) {
