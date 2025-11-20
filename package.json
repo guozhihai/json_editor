@@ -10,85 +10,18 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:config-editor.openConfig",
-    "onCommand:config-editor.editValue",
-    "onCommand:config-editor.refresh",
-    "onCommand:config-editor.chooseSchema",
-    "onCommand:config-editor.openVisualEditor",
-    "onView:config-editor.configTree"
+    "onCommand:config-editor.openVisualEditor"
   ],
   "main": "./dist/extension.js",
   "contributes": {
-    "views": {
-      "explorer": [
-        {
-          "id": "config-editor.configTree",
-          "name": "Config Editor"
-        }
-      ]
-    },
     "commands": [
-      {
-        "command": "config-editor.openConfig",
-        "title": "Open Config (Tree)",
-        "shortTitle": "Open Config"
-      },
-      {
-        "command": "config-editor.refresh",
-        "title": "Reload Config Tree"
-      },
-      {
-        "command": "config-editor.editValue",
-        "title": "Edit Value"
-      },
-      {
-        "command": "config-editor.chooseSchema",
-        "title": "Select Schema File"
-      },
       {
         "command": "config-editor.openVisualEditor",
         "title": "Open JSON Editor Panel",
         "shortTitle": "Open Panel"
       }
     ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "config-editor.openConfig",
-          "when": "view == config-editor.configTree",
-          "group": "navigation@1"
-        },
-        {
-          "command": "config-editor.refresh",
-          "when": "view == config-editor.configTree",
-          "group": "navigation@2"
-        },
-        {
-          "command": "config-editor.chooseSchema",
-          "when": "view == config-editor.configTree",
-          "group": "navigation@3"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "config-editor.editValue",
-          "when": "view == config-editor.configTree && viewItem == configValue",
-          "group": "inline"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "config-editor.openConfig",
-          "when": "resourceExtname == .json",
-          "group": "navigation"
-        },
-        {
-          "command": "config-editor.openVisualEditor",
-          "when": "resourceExtname == .json",
-          "group": "navigation@2"
-        }
-      ]
-    },
+    "menus": {},
     "configuration": {
       "title": "Config Editor",
       "properties": {
