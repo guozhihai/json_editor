@@ -8,6 +8,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Renamed extension package name to `json-value-editor` for Marketplace uniqueness.
 
+## [0.1.3] - 2025-11-20
+
+- Updated display name to "Json Editor" for clarity in VS Code and Marketplace listings.
+
 ## [0.1.1] - 2025-11-20
 
 - Added extension icon so the Marketplace listing and VS Code show branded artwork.
