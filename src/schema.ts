@@ -15,6 +15,7 @@ export interface SchemaFieldDefinition {
 	description?: string;
 	type?: SchemaValueType;
 	rawType?: string;
+	schemaPath?: string[];
 	enum?: Array<string | number>;
 	range?: SchemaRange;
 	unit?: string;
@@ -76,7 +77,7 @@ function normalizeSchema(raw: ConfigSchemaDefinition): Record<string, SchemaFiel
 	if (raw && typeof raw === 'object') {
 		const fields = typeof raw.fields === 'object' && raw.fields !== null ? (raw.fields as Record<string, unknown>) : undefined;
 		if (fields) {
-			flattenSchema(fields, [], result);
+			flattenSchema(fields, [], result, ['fields']);
 		}
 
 		const remainder: Record<string, unknown> = {};
@@ -86,30 +87,37 @@ function normalizeSchema(raw: ConfigSchemaDefinition): Record<string, SchemaFiel
 			}
 			remainder[key] = value;
 		}
-		flattenSchema(remainder, [], result);
+		flattenSchema(remainder, [], result, []);
 	}
 
 	return result;
 }
 
-function flattenSchema(source: Record<string, unknown>, segments: string[], target: Record<string, SchemaFieldDefinition>): void {
+function flattenSchema(
+	source: Record<string, unknown>,
+	segments: string[],
+	target: Record<string, SchemaFieldDefinition>,
+	rawSegments: string[]
+): void {
 	for (const [key, value] of Object.entries(source)) {
 		if (!isPlainObject(value)) {
 			continue;
 		}
 
 		const pathSegments = [...segments, key];
+		const rawPath = [...rawSegments, key];
 		const fieldDefinition = normalizeFieldObject(value);
 		if (fieldDefinition) {
+			fieldDefinition.schemaPath = rawPath;
 			target[joinSegments(pathSegments)] = fieldDefinition;
 			const nested = stripMetadataKeys(value);
 			if (nested) {
-				flattenSchema(nested, pathSegments, target);
+				flattenSchema(nested, pathSegments, target, rawPath);
 			}
 			continue;
 		}
 
-		flattenSchema(value as Record<string, unknown>, pathSegments, target);
+		flattenSchema(value as Record<string, unknown>, pathSegments, target, rawPath);
 	}
 }
 

@@ -18,10 +18,23 @@ interface PanelSession {
 }
 
 interface PanelMessage {
-	type: 'ready' | 'editValue' | 'reload' | 'selectSchema' | 'save';
+	type: 'ready' | 'editValue' | 'reload' | 'selectSchema' | 'save' | 'editSchema';
 	path?: string;
 	value?: unknown;
 	valueType?: SchemaValueType;
+	updates?: SchemaEditPayload;
+}
+
+interface SchemaEditPayload {
+	visible?: 'inherit' | 'visible' | 'hidden';
+	label?: string | null;
+	description?: string | null;
+	type?: string | null;
+	unit?: string | null;
+	enum?: Array<string | number> | null;
+	rangeMin?: number | null;
+	rangeMax?: number | null;
+	rangeOptions?: Array<string | number> | null;
 }
 
 export class JsonEditorPanel implements vscode.Disposable {
@@ -94,6 +107,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 						void this.updateValue(message.path, message.value, message.valueType);
 					}
 					break;
+				case 'editSchema':
+					if (message.path && message.updates) {
+						void this.updateSchemaEntry(message.path, message.updates);
+					}
+					break;
 				default:
 					break;
 			}
@@ -150,7 +168,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 		const pick = await vscode.window.showQuickPick(
 			[
-				{ label: 'Browse for schema file…', value: 'pick' },
+				{ label: 'Browse for schema file...', value: 'pick' },
 				{ label: 'Use automatic detection', value: 'auto' }
 			],
 			{ placeHolder: 'Schema options' }
@@ -230,6 +248,36 @@ export class JsonEditorPanel implements vscode.Disposable {
 		this.syncState();
 		this.postStatus('info', 'Value updated (unsaved).');
 	}
+
+	private async updateSchemaEntry(pathKey: string, updates: SchemaEditPayload): Promise<void> {
+		if (!this.session || !this.session.schema) {
+			this.postStatus('error', 'No schema attached.');
+			return;
+		}
+
+		try {
+			const bytes = await vscode.workspace.fs.readFile(this.session.schema.uri);
+			const text = Buffer.from(bytes).toString('utf8');
+			const document = JSON.parse(text) as Record<string, unknown>;
+		const existing = this.session.schema.getField(pathKey);
+		const schemaPath = existing?.schemaPath ?? deriveSchemaPath(pathKey, document);
+		const target = schemaPath ? resolveSchemaTarget(document, schemaPath) : undefined;
+		if (!target) {
+			this.postStatus('error', 'Failed to locate schema entry.');
+				return;
+			}
+
+			applySchemaUpdates(target, updates);
+			const configuration = vscode.workspace.getConfiguration('configEditor');
+		const indent = Math.max(0, configuration.get<number>('indentSize', 2));
+		const updated = JSON.stringify(document, null, indent) + '\n';
+		await vscode.workspace.fs.writeFile(this.session.schema.uri, Buffer.from(updated, 'utf8'));
+		this.session.schema = await readSchemaFile(this.session.schema.uri);
+		this.syncState();
+	} catch (error) {
+		this.postStatus('error', `Failed to update schema: ${getErrorMessage(error)}`);
+	}
+}
 
 	private castValue(value: unknown, type: SchemaValueType): unknown {
 		if (value === null || value === undefined) {
@@ -444,7 +492,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 	private getHtml(): string {
 		const nonce = String(Date.now());
-		return /* html */ `<!DOCTYPE html>
+		return /* html */ String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
@@ -489,7 +537,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 		.layout {
 			flex: 1;
 			display: grid;
-			grid-template-columns: 1fr 320px;
+			grid-template-columns: 1fr 380px;
 			min-height: 0;
 		}
 		.tree-container {
@@ -584,6 +632,66 @@ export class JsonEditorPanel implements vscode.Disposable {
 		.detail-row textarea {
 			min-height: 3rem;
 		}
+		.schema-editor {
+			border: 1px solid var(--vscode-panel-border);
+			border-radius: 4px;
+			padding: 0.6rem;
+			background: var(--vscode-editor-selectionBackground, rgba(255, 255, 255, 0.04));
+			margin-top: 0.6rem;
+		}
+		.schema-editor-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 0.5rem;
+			gap: 0.5rem;
+		}
+		.schema-editor-header strong {
+			display: block;
+		}
+		.schema-editor-actions {
+			display: flex;
+			gap: 0.4rem;
+		}
+		.schema-editor-actions button {
+			padding: 0.25rem 0.6rem;
+		}
+		.toolbar-row .toolbar-actions {
+			display: flex;
+			align-items: center;
+			gap: 0.25rem;
+			justify-content: flex-start;
+			flex-wrap: nowrap;
+			flex-shrink: 1;
+		}
+		.toolbar-row .toolbar-actions button {
+			padding: 0.28rem 0.6rem;
+			min-width: 56px;
+		}
+		.schema-toolbar-visible {
+			display: block !important;
+		}
+		.schema-mode-toggle {
+			white-space: nowrap;
+		}
+		.schema-grid {
+			display: grid;
+			grid-template-columns: 140px 1fr;
+			gap: 0.4rem 0.6rem;
+			align-items: center;
+		}
+		.schema-grid label {
+			font-size: 0.8rem;
+			color: var(--vscode-descriptionForeground);
+		}
+		.schema-grid textarea {
+			min-height: 2.5rem;
+		}
+		.schema-note {
+			font-size: 0.75rem;
+			color: var(--vscode-descriptionForeground);
+			margin-top: 0.4rem;
+		}
 		.detail-row input.no-spinner::-webkit-outer-spin-button,
 		.detail-row input.no-spinner::-webkit-inner-spin-button {
 			-webkit-appearance: none;
@@ -607,11 +715,19 @@ export class JsonEditorPanel implements vscode.Disposable {
 			color: var(--vscode-descriptionForeground);
 			padding: 1rem;
 		}
+		.schema-mode-toggle {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.25rem;
+			font-size: 0.9rem;
+			color: var(--vscode-descriptionForeground);
+			user-select: none;
+		}
 	</style>
 </head>
 <body>
 	<div class="toolbar">
-		<input id="searchBox" type="text" placeholder="Search key or value…" />
+		<input id="searchBox" type="text" placeholder="Search key or value..." />
 		<button id="reloadBtn" title="Reload file">Reload</button>
 		<button id="saveFileBtn" title="Save changes to disk">Save</button>
 		<button id="schemaBtn" title="Select schema file">Select Schema</button>
@@ -621,22 +737,65 @@ export class JsonEditorPanel implements vscode.Disposable {
 			<div id="tree" class="tree empty-state">No config loaded.</div>
 		</div>
 		<div class="details">
+			<div class="detail-row toolbar-row" id="schemaToolbar" style="display:none;">
+				<div class="toolbar-actions">
+					<button id="schemaSaveBtn" type="button">Save</button>
+					<button id="schemaCancelBtn" type="button">Close</button>
+					<label class="schema-mode-toggle">
+						<input id="schemaModeToggle" type="checkbox" />
+						Schema edit
+					</label>
+				</div>
+			</div>
 			<div class="detail-row">
 				<label>Selected Key</label>
 				<div id="selectedKey">Select a node from the tree.</div>
 			</div>
 			<div id="valueEditor" style="display:none;">
-				<div class="detail-row">
+				<div class="detail-row" id="valueRow">
 					<label id="valueLabel">Value</label>
 					<div id="valueControls"></div>
 				</div>
-				<div class="detail-row">
+				<div class="detail-row" id="descriptionRow">
 					<label>Description</label>
 					<div id="valueDescription">-</div>
 				</div>
 				<div class="detail-row" id="rangeRow" style="display:none;">
 					<label>Range</label>
 					<div id="rangeText">-</div>
+				</div>
+				<div class="schema-editor detail-row" id="schemaEditor" style="display:none;">
+					<div class="schema-editor-header">
+						<div>
+							<strong>Schema Editor</strong>
+							<div id="schemaEditorKey"></div>
+						</div>
+					</div>
+					<div class="schema-grid">
+						<label for="schemaVisible">Visibility</label>
+						<select id="schemaVisible">
+							<option value="">Inherit</option>
+							<option value="visible">Visible</option>
+							<option value="hidden">Hidden</option>
+						</select>
+						<label for="schemaLabel">Label</label>
+						<input id="schemaLabel" type="text" />
+						<label for="schemaDescription">Description</label>
+						<textarea id="schemaDescription"></textarea>
+						<label for="schemaType" class="schema-advanced">Type</label>
+						<input id="schemaType" type="text" class="schema-advanced" placeholder="string, enum, integer, number, boolean, float..." />
+						<label for="schemaUnit" class="schema-advanced">Unit</label>
+						<input id="schemaUnit" type="text" class="schema-advanced" />
+						<label for="schemaEnum" class="schema-advanced">Enum Values</label>
+						<textarea id="schemaEnum" class="schema-advanced" placeholder="Comma or newline separated values"></textarea>
+						<label for="schemaRangeMin" class="schema-advanced">Range Min</label>
+						<input id="schemaRangeMin" class="schema-advanced" type="number" />
+						<label for="schemaRangeMax" class="schema-advanced">Range Max</label>
+						<input id="schemaRangeMax" class="schema-advanced" type="number" />
+						<label for="schemaRangeOptions" class="schema-advanced">Range Options</label>
+						<textarea id="schemaRangeOptions" class="schema-advanced" placeholder="Comma or newline separated values"></textarea>
+					</div>
+					<div class="schema-note">For object nodes you can change visibility, label, and description.</div>
 				</div>
 			</div>
 			<div id="status" class="status"></div>
@@ -648,19 +807,58 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const treeContainer = document.getElementById('tree');
 			const searchBox = document.getElementById('searchBox');
 			const selectedKey = document.getElementById('selectedKey');
+			const detailsPanel = document.querySelector('.details');
 			const valueEditor = document.getElementById('valueEditor');
 			const valueControls = document.getElementById('valueControls');
+			const valueRow = document.getElementById('valueRow');
 			const valueDescription = document.getElementById('valueDescription');
+			const descriptionRow = document.getElementById('descriptionRow');
 			const rangeRow = document.getElementById('rangeRow');
 			const rangeText = document.getElementById('rangeText');
+			const schemaEditor = document.getElementById('schemaEditor');
+			const schemaEditorKey = document.getElementById('schemaEditorKey');
+			const schemaVisible = document.getElementById('schemaVisible');
+			const schemaLabelInput = document.getElementById('schemaLabel');
+			const schemaDescriptionInput = document.getElementById('schemaDescription');
+			const schemaTypeInput = document.getElementById('schemaType');
+			const schemaUnitInput = document.getElementById('schemaUnit');
+			const schemaEnumInput = document.getElementById('schemaEnum');
+			const schemaRangeMinInput = document.getElementById('schemaRangeMin');
+			const schemaRangeMaxInput = document.getElementById('schemaRangeMax');
+			const schemaRangeOptionsInput = document.getElementById('schemaRangeOptions');
 			const statusNode = document.getElementById('status');
 			const saveFileBtn = document.getElementById('saveFileBtn');
+			const schemaSaveBtn = document.getElementById('schemaSaveBtn');
+			const schemaCancelBtn = document.getElementById('schemaCancelBtn');
+			const schemaModeToggle = document.getElementById('schemaModeToggle');
+			const schemaToolbar = document.getElementById('schemaToolbar');
 			let data = undefined;
 			let schema = {};
 			let currentSelection = null;
 			let modifiedPaths = new Set();
+			let schemaFilePath = null;
+			let schemaModeActive = false;
+			let schemaModePath = null;
+			let schemaLimitedMode = false;
+			let schemaEditMode = false;
+			const schemaModeToggleInput = schemaModeToggle;
 			const branchControls = new Map();
 			const collapsedPaths = new Set();
+			function hasSchemaUi() {
+				return (
+					schemaEditor &&
+					schemaEditorKey &&
+					schemaVisible &&
+					schemaLabelInput &&
+					schemaDescriptionInput &&
+					schemaTypeInput &&
+					schemaUnitInput &&
+					schemaEnumInput &&
+					schemaRangeMinInput &&
+					schemaRangeMaxInput &&
+					schemaRangeOptionsInput
+				);
+			}
 
 			document.getElementById('reloadBtn').addEventListener('click', () => {
 				vscode.postMessage({ type: 'reload' });
@@ -674,6 +872,104 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 				vscode.postMessage({ type: 'save' });
 			});
+			if (schemaSaveBtn) {
+				schemaSaveBtn.addEventListener('click', () => {
+					if (!schemaModeActive || !schemaModePath) {
+						return;
+					}
+					const updates = collectSchemaUpdates();
+					if (!updates) {
+						setStatusError('Schema editor UI not available.');
+						return;
+					}
+					vscode.postMessage({ type: 'editSchema', path: schemaModePath, updates });
+					exitSchemaEditor();
+				});
+			}
+			if (schemaCancelBtn) {
+				schemaCancelBtn.addEventListener('click', () => {
+					exitSchemaEditor();
+				});
+			}
+			if (schemaModeToggleInput) {
+				const state = typeof vscode.getState === 'function' ? vscode.getState() : undefined;
+				if (state && typeof state.schemaEditMode === 'boolean') {
+					schemaEditMode = state.schemaEditMode;
+					schemaModeToggleInput.checked = schemaEditMode;
+					if (schemaCancelBtn instanceof HTMLButtonElement) {
+						schemaCancelBtn.disabled = schemaEditMode;
+					}
+				}
+				schemaModeToggleInput.addEventListener('change', () => {
+					const checked = schemaModeToggleInput.checked;
+					schemaEditMode = checked;
+					if (typeof vscode.setState === 'function') {
+						vscode.setState({ schemaEditMode });
+					}
+					if (schemaCancelBtn instanceof HTMLButtonElement) {
+						schemaCancelBtn.disabled = schemaEditMode;
+					}
+					renderTree(searchBox.value);
+					if (currentSelection) {
+						selectPath(currentSelection.pathKey);
+					}
+					if (schemaEditMode && currentSelection) {
+						enterSchemaEditor(currentSelection.pathKey);
+					} else {
+						exitSchemaEditor(false);
+					}
+				});
+			}
+			if (valueEditor) {
+				valueEditor.addEventListener('dblclick', (event) => {
+					if (!event.ctrlKey || !currentSelection || valueEditor.style.display === 'none' || schemaModeActive) {
+						return;
+					}
+					event.preventDefault();
+					event.stopPropagation();
+					const pathKey = currentSelection.pathKey || '';
+					if (!schemaFilePath) {
+						setStatusError('No schema attached.');
+						return;
+					}
+					enterSchemaEditor(pathKey);
+				});
+			}
+			if (detailsPanel) {
+				detailsPanel.addEventListener('dblclick', (event) => {
+					if (!currentSelection || schemaModeActive) {
+						return;
+					}
+					event.preventDefault();
+					event.stopPropagation();
+					if (!event.ctrlKey) {
+						return;
+					}
+					const pathKey = currentSelection.pathKey || '';
+					if (!schemaFilePath) {
+						setStatusError('No schema attached.');
+						return;
+					}
+					enterSchemaEditor(pathKey);
+				});
+			}
+			treeContainer.addEventListener('dblclick', (event) => {
+				const targetElement = event.target;
+				const button = targetElement && typeof targetElement.closest === 'function' ? targetElement.closest('.node-label') : null;
+				if (!button) {
+					return;
+				}
+				if (!event.ctrlKey) {
+					return;
+				}
+				const pathKey = button.dataset.path || '';
+				selectPath(pathKey);
+				if (!schemaFilePath) {
+					setStatusError('No schema attached.');
+					return;
+				}
+				enterSchemaEditor(pathKey);
+			});
 
 			searchBox.addEventListener('input', () => {
 				renderTree(searchBox.value);
@@ -684,6 +980,20 @@ export class JsonEditorPanel implements vscode.Disposable {
 				if (msg.type === 'init') {
 					data = msg.payload.data;
 					schema = msg.payload.schema || {};
+					schemaFilePath = msg.payload.schemaFile || null;
+			if (schemaModeToggleInput) {
+				schemaModeToggleInput.checked = schemaEditMode;
+			}
+					if (!schemaFilePath) {
+						exitSchemaEditor(false);
+					} else if (schemaModeActive && schemaModePath) {
+						const entry = schema[schemaModePath];
+						if (entry) {
+							populateSchemaEditor(entry);
+						} else {
+							exitSchemaEditor(false);
+						}
+					}
 					modifiedPaths = new Set(msg.payload.modifiedPaths || []);
 					saveFileBtn.disabled = modifiedPaths.size === 0;
 					renderTree(searchBox.value);
@@ -723,10 +1033,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 					value.forEach((entry, index) => {
 						const childSegments = [...segments, index];
 						const pathKey = buildPathKey(childSegments);
-						if (!isVisibleNode(pathKey)) {
+						if (!isVisibleNode(pathKey, entry, childSegments)) {
 							return;
 						}
-						appendNode('[' + index + ']', entry, childSegments, parent, filter, pathKey);
+						const displayLabel = '[' + index + ']';
+						appendNode('[' + index + ']', entry, childSegments, parent, filter, pathKey, displayLabel);
 					});
 					return;
 				}
@@ -735,10 +1046,12 @@ export class JsonEditorPanel implements vscode.Disposable {
 					Object.keys(value).forEach((key) => {
 						const childSegments = [...segments, key];
 						const pathKey = buildPathKey(childSegments);
-						if (!isVisibleNode(pathKey)) {
+						if (!isVisibleNode(pathKey, value[key], childSegments)) {
 							return;
 						}
-						appendNode(key, value[key], childSegments, parent, filter, pathKey);
+						const schemaEntry = schema[pathKey];
+						const displayLabel = !schemaEditMode && schemaEntry?.label ? schemaEntry.label : key;
+						appendNode(key, value[key], childSegments, parent, filter, pathKey, displayLabel);
 					});
 				}
 			}
@@ -755,7 +1068,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 			function applyBranchState(entry, collapsed, pathKey) {
 				entry.list.style.display = collapsed ? 'none' : '';
 				entry.list.setAttribute('data-collapsed', collapsed ? 'true' : 'false');
-				entry.toggle.textContent = collapsed ? '⊞' : '⊟';
+				entry.toggle.textContent = collapsed ? '+' : '-';
 				if (pathKey !== undefined) {
 					if (collapsed) {
 						collapsedPaths.add(pathKey);
@@ -900,7 +1213,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 			}
 
-			function appendNode(label, value, segments, parent, filter, pathKey) {
+			function appendNode(label, value, segments, parent, filter, pathKey, displayLabel) {
 				const li = document.createElement('li');
 				const header = document.createElement('div');
 				header.className = 'node-header';
@@ -911,7 +1224,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 					const toggle = document.createElement('button');
 					toggle.className = 'toggle';
 					toggle.type = 'button';
-					toggle.textContent = '⊟';
+					toggle.textContent = '-';
 					header.appendChild(toggle);
 					nestedList = document.createElement('ul');
 					registerBranchControl(pathKey, toggle, nestedList);
@@ -925,7 +1238,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 					header.appendChild(spacer);
 				}
 
-				const button = createNodeButton(label, value, pathKey, filter, isBranch);
+				const button = createNodeButton(label, displayLabel, value, pathKey, filter, isBranch);
 				header.appendChild(button);
 				li.appendChild(header);
 
@@ -937,20 +1250,21 @@ export class JsonEditorPanel implements vscode.Disposable {
 				parent.appendChild(li);
 			}
 
-			function createNodeButton(key, value, pathKey, filter, isBranch) {
+			function createNodeButton(rawKey, displayLabel, value, pathKey, filter, isBranch) {
 				const button = document.createElement('button');
 				button.className = 'node-label';
 				button.type = 'button';
 				button.dataset.path = pathKey || '';
 				button.dataset.branch = String(isBranch);
 				const textValue = isBranch ? '' : formatValue(value);
-				const combined = (key + ' ' + textValue).toLowerCase();
+				const combined = (displayLabel + ' ' + rawKey + ' ' + textValue).toLowerCase();
 				if (filter && !combined.includes(filter)) {
 					button.classList.add('dim');
 				}
-				button.textContent = !isBranch && textValue ? key + ': ' + textValue : key;
+				const labelText = displayLabel || rawKey;
+				button.textContent = !isBranch && textValue ? labelText + ': ' + textValue : labelText;
 				button.addEventListener('click', () => {
-					selectNode(pathKey, value, key);
+					selectNode(pathKey, value, rawKey);
 					updateSelection(button);
 				});
 				if (currentSelection && currentSelection.pathKey === pathKey) {
@@ -978,12 +1292,18 @@ export class JsonEditorPanel implements vscode.Disposable {
 			}
 
 			function selectNode(pathKey, value, key) {
+				exitSchemaEditor(false);
 				currentSelection = { pathKey, key, value };
 				selectedKey.textContent = pathKey || '(root)';
-				renderValueEditor(value, pathKey);
+				if (schemaEditMode) {
+					enterSchemaEditor(pathKey);
+				} else {
+					renderValueEditor(value, pathKey);
+				}
 			}
 
 			function selectPath(pathKey) {
+				exitSchemaEditor(false);
 				const segments = parsePathKey(pathKey);
 				let current = data;
 				for (const segment of segments) {
@@ -996,7 +1316,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 					const key = segments.length > 0 ? segments[segments.length - 1] : '';
 					currentSelection = { pathKey, key, value: current };
 					selectedKey.textContent = pathKey || '(root)';
-					renderValueEditor(current, pathKey);
+					if (schemaEditMode) {
+						enterSchemaEditor(pathKey);
+					} else {
+						renderValueEditor(current, pathKey);
+					}
 					highlightSelection(pathKey);
 				}
 			}
@@ -1071,7 +1395,184 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 
 				valueControls.appendChild(editor);
-				setupEditorCommit(editor, pathKey, type);
+				setupEditorCommit(editor, pathKey, type, schemaEntry);
+			}
+
+			function getValueForPath(pathKey) {
+				const segments = parsePathKey(pathKey);
+				let current = data;
+				for (const segment of segments) {
+					if (current === undefined || current === null) {
+						return undefined;
+					}
+					current = typeof segment === 'number' ? current[segment] : current[segment];
+				}
+				return current;
+			}
+
+			function setSchemaAdvancedVisible(show) {
+				document.querySelectorAll('.schema-advanced').forEach((element) => {
+					if (element instanceof HTMLElement) {
+						element.style.display = show ? '' : 'none';
+					}
+				});
+			}
+
+			function enterSchemaEditor(pathKey) {
+				if (!hasSchemaUi()) {
+					setStatusError('Schema editor UI not available.');
+					return;
+				}
+				const entry = schema[pathKey || ''] || {};
+				const isContainerNode = currentSelection ? isContainer(currentSelection.value) : isContainer(getValueForPath(pathKey));
+				schemaLimitedMode = isContainerNode;
+				if (valueEditor) {
+					valueEditor.style.display = 'block';
+				}
+				if (schemaLimitedMode && valueRow) {
+					valueRow.style.display = 'none';
+				}
+				if (schemaCancelBtn instanceof HTMLButtonElement) {
+					schemaCancelBtn.disabled = schemaEditMode;
+				}
+				if (schemaToolbar) {
+					schemaToolbar.classList.add('schema-toolbar-visible');
+				}
+				setSchemaAdvancedVisible(!schemaLimitedMode);
+				schemaModeActive = true;
+				schemaModePath = pathKey || '';
+				schemaEditor.dataset.path = schemaModePath;
+				schemaEditorKey.textContent = schemaModePath || '(root)';
+				if (descriptionRow) {
+					descriptionRow.style.display = 'none';
+				}
+				if (rangeRow) {
+					rangeRow.style.display = 'none';
+				}
+				schemaEditor.style.display = 'block';
+				populateSchemaEditor(entry);
+				if (schemaModeToggleInput) {
+					schemaModeToggleInput.checked = schemaEditMode;
+				}
+			}
+
+			function exitSchemaEditor(shouldRerender = true) {
+				if (!schemaModeActive) {
+					return;
+				}
+				if (!schemaEditor) {
+					schemaModeActive = false;
+					schemaModePath = null;
+					return;
+				}
+				schemaModeActive = false;
+				schemaModePath = null;
+				schemaEditor.style.display = 'none';
+				schemaEditor.dataset.path = '';
+				if (valueEditor && currentSelection && isContainer(currentSelection.value)) {
+					valueEditor.style.display = 'none';
+				}
+				if (schemaToolbar && !schemaEditMode) {
+					schemaToolbar.classList.remove('schema-toolbar-visible');
+				}
+				if (valueRow) {
+					valueRow.style.display = '';
+				}
+				if (descriptionRow) {
+					descriptionRow.style.display = '';
+				}
+				if (shouldRerender && currentSelection) {
+					renderValueEditor(currentSelection.value, currentSelection.pathKey);
+				}
+			}
+
+			function populateSchemaEditor(entry) {
+				if (!hasSchemaUi()) {
+					return;
+				}
+				schemaVisible.value = entry.visible === undefined ? '' : entry.visible ? 'visible' : 'hidden';
+				schemaLabelInput.value = entry.label || '';
+				schemaDescriptionInput.value = entry.description || '';
+				schemaTypeInput.value = entry.rawType || entry.type || '';
+				schemaUnitInput.value = entry.unit || '';
+				schemaEnumInput.value = formatSchemaList(entry.enum);
+				if (entry.range) {
+					schemaRangeMinInput.value = typeof entry.range.min === 'number' ? String(entry.range.min) : '';
+					schemaRangeMaxInput.value = typeof entry.range.max === 'number' ? String(entry.range.max) : '';
+					schemaRangeOptionsInput.value = formatSchemaList(entry.range.options);
+				} else {
+					schemaRangeMinInput.value = '';
+					schemaRangeMaxInput.value = '';
+					schemaRangeOptionsInput.value = '';
+				}
+			}
+
+			function formatSchemaList(values) {
+				if (!Array.isArray(values) || values.length === 0) {
+					return '';
+				}
+				return values.map((entry) => String(entry)).join('\n');
+			}
+
+			function collectSchemaUpdates() {
+				if (!hasSchemaUi()) {
+					return undefined;
+				}
+				const enumValues = parseSchemaList(schemaEnumInput.value);
+				const rangeOptions = parseSchemaList(schemaRangeOptionsInput.value);
+				const base = {
+					visible: schemaVisible.value || 'inherit',
+					label: normalizeSchemaString(schemaLabelInput.value),
+					description: normalizeSchemaString(schemaDescriptionInput.value)
+				};
+				if (schemaLimitedMode) {
+					return base;
+				}
+
+				return {
+					...base,
+					type: normalizeSchemaString(schemaTypeInput.value),
+					unit: normalizeSchemaString(schemaUnitInput.value),
+					enum: enumValues.length > 0 ? enumValues : null,
+					rangeMin: parseNumberValue(schemaRangeMinInput.value),
+					rangeMax: parseNumberValue(schemaRangeMaxInput.value),
+					rangeOptions: rangeOptions.length > 0 ? rangeOptions : null
+				};
+			}
+
+			function normalizeSchemaString(value) {
+				const trimmed = typeof value === 'string' ? value.trim() : '';
+				return trimmed.length > 0 ? trimmed : null;
+			}
+
+			function parseSchemaList(raw) {
+				return raw
+					.split(/[\n,]/)
+					.map((entry) => entry.trim())
+					.filter((entry) => entry.length > 0)
+					.map((entry) => toSchemaValue(entry));
+			}
+
+			function toSchemaValue(entry) {
+				if (/^-?\d+(?:\.\d+)?$/.test(entry)) {
+					const parsed = Number(entry);
+					if (!Number.isNaN(parsed)) {
+						return parsed;
+					}
+				}
+				return entry;
+			}
+
+			function parseNumberValue(value) {
+				if (value === undefined || value === null) {
+					return null;
+				}
+				const trimmed = String(value).trim();
+				if (trimmed.length === 0) {
+					return null;
+				}
+				const parsed = Number(trimmed);
+				return Number.isNaN(parsed) ? null : parsed;
 			}
 
 			function formatValue(value) {
@@ -1128,12 +1629,51 @@ export class JsonEditorPanel implements vscode.Disposable {
 				return 'string';
 			}
 
-			function isVisibleNode(pathKey) {
-				const entry = schema[pathKey];
-				if (!entry) {
+			function isVisibleNode(pathKey, nodeValue, segments) {
+				return isVisibleNodeInternal(pathKey, nodeValue, segments);
+			}
+
+			function isVisibleNodeInternal(pathKey, nodeValue, segments) {
+				if (schemaEditMode) {
 					return true;
 				}
-				return entry.visible !== false;
+				const entry = schema[pathKey];
+				if (entry && entry.visible === false) {
+					return false;
+				}
+				const value = nodeValue;
+				const isContainerNode = value && typeof value === 'object';
+				if (!isContainerNode) {
+					return true;
+				}
+				const baseSegments = segments ?? parsePathKey(pathKey);
+				return hasVisibleDescendant(value, baseSegments);
+			}
+
+			function hasVisibleDescendant(value, segments) {
+				if (value === null || value === undefined) {
+					return false;
+				}
+				if (Array.isArray(value)) {
+					for (let i = 0; i < value.length; i++) {
+						const childSegments = [...segments, i];
+						const childPath = buildPathKey(childSegments);
+						if (isVisibleNodeInternal(childPath, value[i], childSegments)) {
+							return true;
+						}
+					}
+					return false;
+				}
+				if (typeof value === 'object') {
+					for (const key of Object.keys(value)) {
+						const childSegments = [...segments, key];
+						const childPath = buildPathKey(childSegments);
+						if (isVisibleNodeInternal(childPath, value[key], childSegments)) {
+							return true;
+						}
+					}
+				}
+				return false;
 			}
 
 			function shouldDisplayRange(schemaEntry, type) {
@@ -1219,6 +1759,104 @@ export class JsonEditorPanel implements vscode.Disposable {
 	}
 }
 
+function resolveSchemaTarget(root: Record<string, unknown>, schemaPath: string[]): Record<string, unknown> | undefined {
+	let current: unknown = root;
+	for (const segment of schemaPath) {
+		if (Array.isArray(current)) {
+			const index = Number.parseInt(segment, 10);
+			if (Number.isNaN(index)) {
+				return undefined;
+			}
+
+			const array = current as unknown[];
+			if (!array[index] || typeof array[index] !== 'object' || array[index] === null) {
+				array[index] = {};
+			}
+			current = array[index];
+			continue;
+		}
+
+		if (!current || typeof current !== 'object') {
+			return undefined;
+		}
+
+		const container = current as Record<string, unknown>;
+		if (!Object.prototype.hasOwnProperty.call(container, segment) || typeof container[segment] !== 'object' || container[segment] === null) {
+			container[segment] = {};
+		}
+		current = container[segment];
+	}
+
+	return current && typeof current === 'object' ? (current as Record<string, unknown>) : undefined;
+}
+
+function applySchemaUpdates(target: Record<string, unknown>, updates: SchemaEditPayload): void {
+	if ('visible' in updates) {
+		delete target['visible'];
+		delete target['visibility'];
+		if (updates.visible === 'visible') {
+			target['visibility'] = 'visible';
+		} else if (updates.visible === 'hidden') {
+			target['visibility'] = 'hidden';
+		}
+	}
+
+	if ('label' in updates) {
+		setSchemaString(target, 'label', updates.label);
+	}
+
+	if ('description' in updates) {
+		setSchemaString(target, 'description', updates.description);
+	}
+
+	if ('type' in updates) {
+		setSchemaString(target, 'type', updates.type);
+	}
+
+	if ('unit' in updates) {
+		setSchemaString(target, 'unit', updates.unit);
+	}
+
+	if ('enum' in updates) {
+		setSchemaArray(target, 'enum', updates.enum);
+	}
+
+	if ('rangeMin' in updates || 'rangeMax' in updates || 'rangeOptions' in updates) {
+		const range: Record<string, unknown> = {};
+		if (typeof updates.rangeMin === 'number') {
+			range.min = updates.rangeMin;
+		}
+		if (typeof updates.rangeMax === 'number') {
+			range.max = updates.rangeMax;
+		}
+		if (updates.rangeOptions && updates.rangeOptions.length > 0) {
+			range.options = updates.rangeOptions;
+		}
+
+		if (Object.keys(range).length > 0) {
+			target['range'] = range;
+		} else {
+			delete target['range'];
+		}
+	}
+}
+
+function setSchemaString(target: Record<string, unknown>, key: string, value: string | null | undefined): void {
+	if (typeof value === 'string' && value.trim().length > 0) {
+		target[key] = value.trim();
+	} else {
+		delete target[key];
+	}
+}
+
+function setSchemaArray(target: Record<string, unknown>, key: string, value: Array<string | number> | null | undefined): void {
+	if (Array.isArray(value) && value.length > 0) {
+		target[key] = value;
+	} else {
+		delete target[key];
+	}
+}
+
 async function resolveTargetUri(targetUri?: vscode.Uri): Promise<vscode.Uri | undefined> {
 	if (targetUri) {
 		return targetUri;
@@ -1235,6 +1873,14 @@ async function resolveTargetUri(targetUri?: vscode.Uri): Promise<vscode.Uri | un
 	});
 
 	return picked?.[0];
+}
+
+function deriveSchemaPath(pathKey: string, document: Record<string, unknown>): string[] {
+	const baseSegments = parsePathKey(pathKey).map((segment) => String(segment));
+	const fieldsValue = (document as Record<string, unknown>)['fields'];
+	const hasFieldsContainer =
+		fieldsValue !== undefined && fieldsValue !== null && (typeof fieldsValue === 'object' || Array.isArray(fieldsValue));
+	return hasFieldsContainer ? ['fields', ...baseSegments] : baseSegments;
 }
 
 function isJsonDocument(document: vscode.TextDocument): boolean {
