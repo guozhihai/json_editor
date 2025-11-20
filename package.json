@@ -47,7 +47,7 @@
       },
       {
         "command": "config-editor.openVisualEditor",
-        "title": "Open Config Editor Panel",
+        "title": "Open JSON Editor Panel",
         "shortTitle": "Open Panel"
       }
     ],
