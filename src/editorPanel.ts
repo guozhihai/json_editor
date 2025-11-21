@@ -1942,7 +1942,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 				const itemSchema = getArrayItemSchema(pathKey);
 				const options = itemSchema?.enum || (itemSchema?.range && itemSchema.range.options);
-				const normalizedType = normalizeSchemaType(itemSchema?.type || itemSchema?.rawType || 'string');
+				const normalizedType = normalizeSchemaTypeLocal(itemSchema?.type || itemSchema?.rawType || 'string');
 
 				if (options && Array.isArray(options) && options.length > 0 && arrayEnumRow && arrayEnumSelect) {
 					arrayEnumRow.style.display = '';
@@ -2143,6 +2143,29 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 				if (typeof value === 'number') {
 					return Number.isInteger(value) ? 'integer' : 'number';
+				}
+				return 'string';
+			}
+
+			function normalizeSchemaTypeLocal(type) {
+				const lowered = String(type || '').toLowerCase();
+				if (['integer', 'number', 'boolean', 'string'].includes(lowered)) {
+					return lowered;
+				}
+				if (lowered === 'float' || lowered === 'double' || lowered === 'decimal') {
+					return 'number';
+				}
+				if (lowered === 'enum') {
+					return 'string';
+				}
+				if (lowered === 'object') {
+					return 'object';
+				}
+				if (lowered === 'array') {
+					return 'array';
+				}
+				if (lowered === 'null') {
+					return 'null';
 				}
 				return 'string';
 			}

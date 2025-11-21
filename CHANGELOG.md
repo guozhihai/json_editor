@@ -24,6 +24,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - When an array element `[i]` is selected, the editor pre-selects that index; Clone/Remove apply to the chosen index.
 - Fixed array input controls not rendering in some cases; value/type inputs now always show and prefill when selecting an existing item.
 
+## [0.2.5] - 2025-11-21
+
+- Fixed missing type helper in the Webview that prevented array value inputs from rendering (runtime error).
+
 ## [0.1.5] - 2025-11-20
 
 - Replaced extension icon with updated artwork for Marketplace and VS Code.
