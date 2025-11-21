@@ -4,43 +4,11 @@ All notable changes to the "config-editor" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [0.2.0] - 2025-11-20
+## [0.1.6] - 2025-11-21
 
-- Added array item management in Webview (add/clone/remove) with schema-aware prompts and schema-less type selection.
-- Arrays now show inline actions when selected; inputs support booleans, numbers, enums, objects/arrays (via JSON), and defaults when no schema is present.
-
-## [0.2.1] - 2025-11-20
-
-- Fixed "No config loaded" when opening files with comments/trailing commas by parsing JSONC (via jsonc-parser).
-- Added runtime dependency on jsonc-parser to accept JSON with comments; saves are still emitted as canonical JSON.
-
-## [0.2.2] - 2025-11-21
-
-- Array Add/Clone/Remove now prompt through VS Code input boxes (no browser `prompt`), fixing sandbox restrictions. Prompts are schema-aware and allow type selection when no schema is present.
-
-## [0.2.3] - 2025-11-21
-
-- Added inline array editor in the panel: index/type/value inputs live in the Webview (no modal prompts).
-- When an array element `[i]` is selected, the editor pre-selects that index; Clone/Remove apply to the chosen index.
-- Fixed array input controls not rendering in some cases; value/type inputs now always show and prefill when selecting an existing item.
-
-## [0.2.5] - 2025-11-21
-
-- Fixed missing type helper in the Webview that prevented array value inputs from rendering (runtime error).
-
-## [0.2.6] - 2025-11-21
-
-- Simplified array actions to Add/Remove; Remove only shows when an array element `[i]` is selected.
-- Moved array Value hint above the input and clarified guidance for each type; inputs always render for entering new values.
-
-## [0.2.7] - 2025-11-21
-
-- Moved array Add/Remove buttons beneath the value hint/input section for clearer workflow.
-- Clearing inline validation messages when the value type is changed to avoid stale warnings.
-
-## [0.2.8] - 2025-11-21
-
-- Moved array value hint text below the input controls to keep focus on editing first.
+- Added schema-aware array item management (Add/Remove) with inline index/type/value inputs; selecting an element preselects its index and shows Remove.
+- Inline editor supports JSONC configs, schema enum/options, object/array JSON inputs, and clears validation warnings on type change.
+- UI polish: inline hints for array values, display/icon updates integrated.
 
 ## [0.1.5] - 2025-11-20
 
