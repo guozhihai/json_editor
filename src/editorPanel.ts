@@ -1920,11 +1920,20 @@ export class JsonEditorPanel implements vscode.Disposable {
 					arrayHelp.textContent = 'Length: ' + value.length + '.';
 				}
 				arrayEditor.dataset.path = pathKey || '';
-				setupArrayInputs(value, pathKey, selectedIndex);
+				const currentValue = typeof selectedIndex === 'number' ? value[selectedIndex] : undefined;
+				setupArrayInputs(value, pathKey, selectedIndex, currentValue);
 			}
 
-			function setupArrayInputs(value, pathKey, selectedIndex) {
-				if (!arrayIndexInput || !arrayTypeSelect || !arrayValueInput || !arrayBoolSelect || !arrayJsonInput) {
+			function setupArrayInputs(value, pathKey, selectedIndex, currentValue) {
+				if (
+					!arrayIndexInput ||
+					!arrayTypeSelect ||
+					!arrayValueInput ||
+					!arrayBoolSelect ||
+					!arrayJsonInput ||
+					!arrayValueRow ||
+					!arrayTypeRow
+				) {
 					return;
 				}
 				const defaultIndex = selectedIndex !== undefined ? selectedIndex : value.length;
@@ -1957,12 +1966,13 @@ export class JsonEditorPanel implements vscode.Disposable {
 						arrayValueRow.style.display = '';
 					}
 
-					arrayTypeSelect.value = normalizedType;
-					showArrayValueInputs(normalizedType);
+					const deduced = deduceTypeForValue(currentValue) ?? normalizedType;
+					arrayTypeSelect.value = deduced;
+					showArrayValueInputs(deduced, currentValue);
 				}
 			}
 
-			function showArrayValueInputs(type) {
+			function showArrayValueInputs(type, currentValue) {
 				if (!arrayValueInput || !arrayBoolSelect || !arrayJsonInput) {
 					return;
 				}
@@ -1971,21 +1981,36 @@ export class JsonEditorPanel implements vscode.Disposable {
 				arrayJsonInput.style.display = 'none';
 				if (type === 'boolean') {
 					arrayBoolSelect.style.display = '';
+					if (currentValue !== undefined) {
+						arrayBoolSelect.value = String(Boolean(currentValue));
+					}
 				} else if (type === 'object' || type === 'array') {
 					arrayJsonInput.style.display = '';
-					arrayJsonInput.value = type === 'object' ? '{}' : '[]';
+					if (currentValue !== undefined) {
+						try {
+							arrayJsonInput.value = JSON.stringify(currentValue, null, 2);
+						} catch {
+							arrayJsonInput.value = type === 'object' ? '{}' : '[]';
+						}
+					} else {
+						arrayJsonInput.value = type === 'object' ? '{}' : '[]';
+					}
 				} else if (type === 'null') {
 					// no input
 				} else {
 					arrayValueInput.style.display = '';
 					arrayValueInput.type = type === 'number' || type === 'integer' ? 'number' : 'text';
-					arrayValueInput.value = '';
+					if (currentValue !== undefined && currentValue !== null) {
+						arrayValueInput.value = String(currentValue);
+					} else {
+						arrayValueInput.value = '';
+					}
 				}
 			}
 
 			if (arrayTypeSelect) {
 				arrayTypeSelect.addEventListener('change', () => {
-					showArrayValueInputs(arrayTypeSelect.value);
+					showArrayValueInputs(arrayTypeSelect.value, undefined);
 				});
 			}
 
@@ -2034,6 +2059,25 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 				const raw = arrayValueInput?.value ?? '';
 				return { value: raw, valueType: 'string' };
+			}
+
+			function deduceTypeForValue(val) {
+				if (val === null) {
+					return 'null';
+				}
+				if (typeof val === 'boolean') {
+					return 'boolean';
+				}
+				if (typeof val === 'number') {
+					return Number.isInteger(val) ? 'integer' : 'number';
+				}
+				if (Array.isArray(val)) {
+					return 'array';
+				}
+				if (val && typeof val === 'object') {
+					return 'object';
+				}
+				return 'string';
 			}
 
 			function handleArraySubmit(kind) {
