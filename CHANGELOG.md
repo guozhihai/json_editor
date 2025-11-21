@@ -4,6 +4,10 @@ All notable changes to the "config-editor" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.8] - 2025-11-21
+
+- Rebuilt and republished to include runtime dependencies in the VSIX.
+
 ## [0.1.7] - 2025-11-21
 
 - Fixed packaged VSIX missing runtime dependencies by including `node_modules`, preventing `config-editor.openVisualEditor` from failing to register.

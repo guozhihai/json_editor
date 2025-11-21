@@ -9,7 +9,7 @@
     "url": "https://github.com/guozhihai/json_editor.git"
   },
   "license": "MIT",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "engines": {
     "vscode": "^1.106.0"
   },
