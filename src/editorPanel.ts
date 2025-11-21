@@ -1193,10 +1193,9 @@ export class JsonEditorPanel implements vscode.Disposable {
 					<label>Array actions</label>
 					<div class="array-actions">
 						<button id="arrayAddBtn" type="button">Add item</button>
-						<button id="arrayCloneBtn" type="button">Clone item</button>
 						<button id="arrayRemoveBtn" type="button">Remove item</button>
 					</div>
-					<div class="array-help" id="arrayHelp">Select an array node to manage items.</div>
+					<div class="array-help" id="arrayHelp">Select an array node or element to manage items.</div>
 				</div>
 				<div class="detail-row">
 					<label for="arrayIndexInput">Index</label>
@@ -1220,13 +1219,13 @@ export class JsonEditorPanel implements vscode.Disposable {
 				</div>
 				<div class="detail-row" id="arrayValueRow" style="display:none;">
 					<label for="arrayValueInput">Value</label>
+					<div id="arrayValueHint" class="array-help">Select a type, then enter the value. Objects/arrays should be JSON.</div>
 					<input id="arrayValueInput" type="text" />
 					<select id="arrayBoolSelect" style="display:none;">
 						<option value="true">true</option>
 						<option value="false">false</option>
 					</select>
 					<textarea id="arrayJsonInput" style="display:none;" rows="3"></textarea>
-					<div id="arrayValueHint" class="array-help">Select a type, then enter the value. Objects/arrays should be JSON.</div>
 				</div>
 			</div>
 			<div id="status" class="status"></div>
@@ -1259,7 +1258,6 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const schemaRangeOptionsInput = document.getElementById('schemaRangeOptions');
 			const arrayEditor = document.getElementById('arrayEditor');
 			const arrayAddBtn = document.getElementById('arrayAddBtn');
-			const arrayCloneBtn = document.getElementById('arrayCloneBtn');
 			const arrayRemoveBtn = document.getElementById('arrayRemoveBtn');
 			const arrayHelp = document.getElementById('arrayHelp');
 			const arrayIndexInput = document.getElementById('arrayIndexInput');
@@ -1425,11 +1423,6 @@ export class JsonEditorPanel implements vscode.Disposable {
 			if (arrayRemoveBtn) {
 				arrayRemoveBtn.addEventListener('click', () => {
 					handleArraySubmit('remove');
-				});
-			}
-			if (arrayCloneBtn) {
-				arrayCloneBtn.addEventListener('click', () => {
-					handleArraySubmit('clone');
 				});
 			}
 
@@ -1924,6 +1917,9 @@ export class JsonEditorPanel implements vscode.Disposable {
 				arrayEditor.dataset.path = pathKey || '';
 				const currentValue = typeof selectedIndex === 'number' ? value[selectedIndex] : undefined;
 				setupArrayInputs(value, pathKey, selectedIndex, currentValue);
+				if (arrayRemoveBtn) {
+					arrayRemoveBtn.style.display = typeof selectedIndex === 'number' ? '' : 'none';
+				}
 			}
 
 			function setupArrayInputs(value, pathKey, selectedIndex, currentValue) {
@@ -2120,7 +2116,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 						path: pathKey,
 						mutation: { kind: 'add', index, value: collected.value, valueType: collected.valueType }
 					});
-				} else {
+				} else if (kind === 'remove') {
 					vscode.postMessage({
 						type: 'mutateArray',
 						path: pathKey,

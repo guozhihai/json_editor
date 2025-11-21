@@ -28,6 +28,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Fixed missing type helper in the Webview that prevented array value inputs from rendering (runtime error).
 
+## [0.2.6] - 2025-11-21
+
+- Simplified array actions to Add/Remove; Remove only shows when an array element `[i]` is selected.
+- Moved array Value hint above the input and clarified guidance for each type; inputs always render for entering new values.
+
 ## [0.1.5] - 2025-11-20
 
 - Replaced extension icon with updated artwork for Marketplace and VS Code.
