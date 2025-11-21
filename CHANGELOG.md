@@ -33,6 +33,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Simplified array actions to Add/Remove; Remove only shows when an array element `[i]` is selected.
 - Moved array Value hint above the input and clarified guidance for each type; inputs always render for entering new values.
 
+## [0.2.7] - 2025-11-21
+
+- Moved array Add/Remove buttons beneath the value hint/input section for clearer workflow.
+- Clearing inline validation messages when the value type is changed to avoid stale warnings.
+
 ## [0.1.5] - 2025-11-20
 
 - Replaced extension icon with updated artwork for Marketplace and VS Code.

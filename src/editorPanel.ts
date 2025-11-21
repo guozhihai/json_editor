@@ -1190,11 +1190,6 @@ export class JsonEditorPanel implements vscode.Disposable {
 			</div>
 			<div id="arrayEditor" style="display:none;">
 				<div class="detail-row">
-					<label>Array actions</label>
-					<div class="array-actions">
-						<button id="arrayAddBtn" type="button">Add item</button>
-						<button id="arrayRemoveBtn" type="button">Remove item</button>
-					</div>
 					<div class="array-help" id="arrayHelp">Select an array node or element to manage items.</div>
 				</div>
 				<div class="detail-row">
@@ -1226,6 +1221,10 @@ export class JsonEditorPanel implements vscode.Disposable {
 						<option value="false">false</option>
 					</select>
 					<textarea id="arrayJsonInput" style="display:none;" rows="3"></textarea>
+					<div class="array-actions" style="margin-top:0.4rem;">
+						<button id="arrayAddBtn" type="button">Add item</button>
+						<button id="arrayRemoveBtn" type="button">Remove item</button>
+					</div>
 				</div>
 			</div>
 			<div id="status" class="status"></div>
@@ -2009,6 +2008,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 			if (arrayTypeSelect) {
 				arrayTypeSelect.addEventListener('change', () => {
+					clearStatus();
 					showArrayValueInputs(arrayTypeSelect.value, undefined);
 				});
 			}
@@ -2093,6 +2093,13 @@ export class JsonEditorPanel implements vscode.Disposable {
 					null: 'Value will be null.'
 				};
 				arrayValueHint.textContent = base[type] || 'Select a type, then enter the value.';
+			}
+
+			function clearStatus() {
+				if (statusNode) {
+					statusNode.textContent = '';
+					statusNode.className = 'status';
+				}
 			}
 
 			function handleArraySubmit(kind) {
