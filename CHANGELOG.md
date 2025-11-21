@@ -22,6 +22,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Added inline array editor in the panel: index/type/value inputs live in the Webview (no modal prompts).
 - When an array element `[i]` is selected, the editor pre-selects that index; Clone/Remove apply to the chosen index.
+- Fixed array input controls not rendering in some cases; value/type inputs now always show and prefill when selecting an existing item.
 
 ## [0.1.5] - 2025-11-20
 
