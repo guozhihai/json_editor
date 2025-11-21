@@ -18,6 +18,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Array Add/Clone/Remove now prompt through VS Code input boxes (no browser `prompt`), fixing sandbox restrictions. Prompts are schema-aware and allow type selection when no schema is present.
 
+## [0.2.3] - 2025-11-21
+
+- Added inline array editor in the panel: index/type/value inputs live in the Webview (no modal prompts).
+- When an array element `[i]` is selected, the editor pre-selects that index; Clone/Remove apply to the chosen index.
+
 ## [0.1.5] - 2025-11-20
 
 - Replaced extension icon with updated artwork for Marketplace and VS Code.

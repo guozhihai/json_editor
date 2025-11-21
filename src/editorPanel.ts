@@ -1198,6 +1198,35 @@ export class JsonEditorPanel implements vscode.Disposable {
 					</div>
 					<div class="array-help" id="arrayHelp">Select an array node to manage items.</div>
 				</div>
+				<div class="detail-row">
+					<label for="arrayIndexInput">Index</label>
+					<input id="arrayIndexInput" type="number" min="0" step="1" />
+				</div>
+				<div class="detail-row" id="arrayEnumRow" style="display:none;">
+					<label for="arrayEnumSelect">Value (enum/options)</label>
+					<select id="arrayEnumSelect"></select>
+				</div>
+				<div class="detail-row" id="arrayTypeRow" style="display:none;">
+					<label for="arrayTypeSelect">Value type</label>
+					<select id="arrayTypeSelect">
+						<option value="string">string</option>
+						<option value="number">number</option>
+						<option value="integer">integer</option>
+						<option value="boolean">boolean</option>
+						<option value="object">object</option>
+						<option value="array">array</option>
+						<option value="null">null</option>
+					</select>
+				</div>
+				<div class="detail-row" id="arrayValueRow" style="display:none;">
+					<label for="arrayValueInput">Value</label>
+					<input id="arrayValueInput" type="text" />
+					<select id="arrayBoolSelect" style="display:none;">
+						<option value="true">true</option>
+						<option value="false">false</option>
+					</select>
+					<textarea id="arrayJsonInput" style="display:none;" rows="3"></textarea>
+				</div>
 			</div>
 			<div id="status" class="status"></div>
 		</div>
@@ -1232,6 +1261,15 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const arrayCloneBtn = document.getElementById('arrayCloneBtn');
 			const arrayRemoveBtn = document.getElementById('arrayRemoveBtn');
 			const arrayHelp = document.getElementById('arrayHelp');
+			const arrayIndexInput = document.getElementById('arrayIndexInput');
+			const arrayEnumRow = document.getElementById('arrayEnumRow');
+			const arrayEnumSelect = document.getElementById('arrayEnumSelect');
+			const arrayTypeRow = document.getElementById('arrayTypeRow');
+			const arrayTypeSelect = document.getElementById('arrayTypeSelect');
+			const arrayValueRow = document.getElementById('arrayValueRow');
+			const arrayValueInput = document.getElementById('arrayValueInput');
+			const arrayBoolSelect = document.getElementById('arrayBoolSelect');
+			const arrayJsonInput = document.getElementById('arrayJsonInput');
 			const statusNode = document.getElementById('status');
 			const saveFileBtn = document.getElementById('saveFileBtn');
 			const schemaSaveBtn = document.getElementById('schemaSaveBtn');
@@ -1379,35 +1417,17 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 			if (arrayAddBtn) {
 				arrayAddBtn.addEventListener('click', () => {
-					if (currentSelection && Array.isArray(currentSelection.value)) {
-						vscode.postMessage({
-							type: 'arrayAction',
-							path: currentSelection.pathKey || '',
-							arrayKind: 'add'
-						});
-					}
+					handleArraySubmit('add');
 				});
 			}
 			if (arrayRemoveBtn) {
 				arrayRemoveBtn.addEventListener('click', () => {
-					if (currentSelection && Array.isArray(currentSelection.value)) {
-						vscode.postMessage({
-							type: 'arrayAction',
-							path: currentSelection.pathKey || '',
-							arrayKind: 'remove'
-						});
-					}
+					handleArraySubmit('remove');
 				});
 			}
 			if (arrayCloneBtn) {
 				arrayCloneBtn.addEventListener('click', () => {
-					if (currentSelection && Array.isArray(currentSelection.value)) {
-						vscode.postMessage({
-							type: 'arrayAction',
-							path: currentSelection.pathKey || '',
-							arrayKind: 'clone'
-						});
-					}
+					handleArraySubmit('clone');
 				});
 			}
 
@@ -1800,6 +1820,12 @@ export class JsonEditorPanel implements vscode.Disposable {
 			}
 
 			function renderValueEditor(value, pathKey) {
+				const arrayContext = getArrayContextForElement(pathKey, value);
+				if (arrayContext) {
+					renderArrayEditor(arrayContext.arrayValue, arrayContext.arrayPath, arrayContext.index);
+					return;
+				}
+
 				if (Array.isArray(value)) {
 					renderArrayEditor(value, pathKey);
 					return;
@@ -1881,7 +1907,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 				setupEditorCommit(editor, pathKey, type, schemaEntry);
 			}
 
-			function renderArrayEditor(value, pathKey) {
+			function renderArrayEditor(value, pathKey, selectedIndex) {
 				if (!arrayEditor) {
 					return;
 				}
@@ -1891,9 +1917,190 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 				selectedKey.textContent = pathKey || '(root)';
 				if (arrayHelp) {
-					arrayHelp.textContent = 'Length: ' + value.length + '. Add inserts at end by default.';
+					arrayHelp.textContent = 'Length: ' + value.length + '.';
 				}
 				arrayEditor.dataset.path = pathKey || '';
+				setupArrayInputs(value, pathKey, selectedIndex);
+			}
+
+			function setupArrayInputs(value, pathKey, selectedIndex) {
+				if (!arrayIndexInput || !arrayTypeSelect || !arrayValueInput || !arrayBoolSelect || !arrayJsonInput) {
+					return;
+				}
+				const defaultIndex = selectedIndex !== undefined ? selectedIndex : value.length;
+				arrayIndexInput.value = String(defaultIndex);
+				arrayIndexInput.max = String(Math.max(0, value.length));
+
+				const itemSchema = getArrayItemSchema(pathKey);
+				const options = itemSchema?.enum || (itemSchema?.range && itemSchema.range.options);
+				const normalizedType = normalizeSchemaType(itemSchema?.type || itemSchema?.rawType || 'string');
+
+				if (options && Array.isArray(options) && options.length > 0 && arrayEnumRow && arrayEnumSelect) {
+					arrayEnumRow.style.display = '';
+					arrayEnumSelect.innerHTML = '';
+					options.forEach((opt) => {
+						const option = document.createElement('option');
+						option.value = String(opt);
+						option.textContent = String(opt);
+						arrayEnumSelect.appendChild(option);
+					});
+					arrayTypeRow.style.display = 'none';
+					arrayValueRow.style.display = 'none';
+				} else {
+					if (arrayEnumRow) {
+						arrayEnumRow.style.display = 'none';
+					}
+					if (arrayTypeRow) {
+						arrayTypeRow.style.display = '';
+					}
+					if (arrayValueRow) {
+						arrayValueRow.style.display = '';
+					}
+
+					arrayTypeSelect.value = normalizedType;
+					showArrayValueInputs(normalizedType);
+				}
+			}
+
+			function showArrayValueInputs(type) {
+				if (!arrayValueInput || !arrayBoolSelect || !arrayJsonInput) {
+					return;
+				}
+				arrayValueInput.style.display = 'none';
+				arrayBoolSelect.style.display = 'none';
+				arrayJsonInput.style.display = 'none';
+				if (type === 'boolean') {
+					arrayBoolSelect.style.display = '';
+				} else if (type === 'object' || type === 'array') {
+					arrayJsonInput.style.display = '';
+					arrayJsonInput.value = type === 'object' ? '{}' : '[]';
+				} else if (type === 'null') {
+					// no input
+				} else {
+					arrayValueInput.style.display = '';
+					arrayValueInput.type = type === 'number' || type === 'integer' ? 'number' : 'text';
+					arrayValueInput.value = '';
+				}
+			}
+
+			if (arrayTypeSelect) {
+				arrayTypeSelect.addEventListener('change', () => {
+					showArrayValueInputs(arrayTypeSelect.value);
+				});
+			}
+
+			function collectArrayValue(pathKey, kind) {
+				const itemSchema = getArrayItemSchema(pathKey);
+				const options = itemSchema?.enum || (itemSchema?.range && itemSchema.range.options);
+				if (options && arrayEnumRow && arrayEnumRow.style.display !== 'none' && arrayEnumSelect) {
+					const val = arrayEnumSelect.value;
+					return { value: val, valueType: inferTypeFromLiteral(val) };
+				}
+
+				const type = arrayTypeSelect ? arrayTypeSelect.value : 'string';
+				if (type === 'null') {
+					return { value: null, valueType: undefined };
+				}
+				if (type === 'boolean') {
+					return { value: arrayBoolSelect?.value === 'true', valueType: 'boolean' };
+				}
+				if (type === 'integer' || type === 'number') {
+					const raw = arrayValueInput?.value ?? '';
+					const parsed = type === 'integer' ? Number.parseInt(raw, 10) : Number.parseFloat(raw);
+					if (Number.isNaN(parsed)) {
+						setStatusError('Enter a valid number.');
+						return undefined;
+					}
+					return { value: parsed, valueType: type };
+				}
+				if (type === 'object' || type === 'array') {
+					const raw = arrayJsonInput?.value ?? '';
+					try {
+						const parsed = JSON.parse(raw.trim().length === 0 ? (type === 'object' ? '{}' : '[]') : raw);
+						if (type === 'object' && (Array.isArray(parsed) || typeof parsed !== 'object' || parsed === null)) {
+							setStatusError('Enter a JSON object.');
+							return undefined;
+						}
+						if (type === 'array' && !Array.isArray(parsed)) {
+							setStatusError('Enter a JSON array.');
+							return undefined;
+						}
+						return { value: parsed, valueType: undefined };
+					} catch {
+						setStatusError('Enter valid JSON.');
+						return undefined;
+					}
+				}
+
+				const raw = arrayValueInput?.value ?? '';
+				return { value: raw, valueType: 'string' };
+			}
+
+			function handleArraySubmit(kind) {
+				if (!arrayEditor) {
+					return;
+				}
+				const pathKey = arrayEditor.dataset.path || '';
+				const index = arrayIndexInput ? Number.parseInt(arrayIndexInput.value || '0', 10) : NaN;
+				if (Number.isNaN(index) || index < 0) {
+					setStatusError('Enter a valid index.');
+					return;
+				}
+
+				if (kind === 'add') {
+					const collected = collectArrayValue(pathKey, kind);
+					if (!collected) {
+						return;
+					}
+					vscode.postMessage({
+						type: 'mutateArray',
+						path: pathKey,
+						mutation: { kind: 'add', index, value: collected.value, valueType: collected.valueType }
+					});
+				} else {
+					vscode.postMessage({
+						type: 'mutateArray',
+						path: pathKey,
+						mutation: { kind, index }
+					});
+				}
+			}
+
+			function getArrayContextForElement(pathKey, value) {
+				const segments = parsePathKey(pathKey);
+				if (segments.length === 0) {
+					return null;
+				}
+				const last = segments[segments.length - 1];
+				if (typeof last !== 'number') {
+					return null;
+				}
+				const parentSegments = segments.slice(0, -1);
+				const parentPath = buildPathKey(parentSegments);
+				const parentValue = getValueForPath(parentPath);
+				if (!Array.isArray(parentValue)) {
+					return null;
+				}
+				return { arrayPath: parentPath, arrayValue: parentValue, index: last };
+			}
+
+			function getArrayItemSchema(pathKey) {
+				const base = pathKey || '';
+				const candidate = base.length > 0 ? base + '[0]' : '[0]';
+				return schema[candidate];
+			}
+
+			function inferTypeFromLiteral(value) {
+				if (value === null || value === undefined) {
+					return undefined;
+				}
+				if (value === 'true' || value === 'false') {
+					return 'boolean';
+				}
+				if (typeof value === 'number') {
+					return Number.isInteger(value) ? 'integer' : 'number';
+				}
+				return 'string';
 			}
 
 			// prompt helpers removed; prompts handled in extension host to avoid sandbox modal restrictions.
