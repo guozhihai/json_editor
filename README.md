@@ -17,6 +17,7 @@ JSON/JSONC の設定ファイルを "ツリー + フォーム" で編集する V
    - ラベル表示名（`label`）と説明（`description`）。
    - 値の範囲や選択肢（`range.min/max` または 配列 `range`）。
    - 型ヒント（`string` / `enum` / `integer` / `number` / `boolean`）。
+5. **配列ノード操作**: Add/Clone/Remove で要素を追加・複製・削除。スキーマ未定義でも型と値を選んで挿入可能。
 
 ## Getting Started
 
@@ -28,6 +29,7 @@ JSON/JSONC の設定ファイルを "ツリー + フォーム" で編集する V
    - スキーマで選択肢を定義している場合は QuickPick が表示されます。
 4. **Reload Config Tree** で外部変更を再読込できます。
 5. **Select Schema File** でスキーマを手動指定／解除できます。
+- 配列ノードを選択すると右ペインに Add/Clone/Remove が表示され、要素の追加・複製・削除ができます（スキーマが無い場合は型と値を入力）。 
 
 ### Webview パネル（メイン画面）
 `Config Editor: Open Config Editor Panel` を実行すると、エディターエリアに専用パネルが開きます。

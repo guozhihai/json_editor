@@ -15,6 +15,7 @@ A VS Code extension that edits JSON/JSONC config files with a "tree + form" expe
    - Label (`label`) and description (`description`).
    - Value ranges or allowed options (`range.min/max` or array `range`).
    - Type hints (`string` / `enum` / `integer` / `number` / `boolean`).
+5. **Array actions**: Add/Clone/Remove items on array nodes; when no schema is present you can pick the type/value before inserting.
 
 ## Getting Started
 
@@ -26,6 +27,7 @@ A VS Code extension that edits JSON/JSONC config files with a "tree + form" expe
    - If the schema defines choices, a QuickPick list is shown.
 4. Use **Reload Config Tree** to refresh after external edits.
 5. Use **Select Schema File** to manually set or clear the schema.
+- Selecting an array node shows Add/Clone/Remove actions in the right pane so you can insert, duplicate, or delete elements (with type/value prompts when no schema exists).
 
 ### Webview panel (main UI)
 Run `Config Editor: Open Config Editor Panel` to open the full editor panel.

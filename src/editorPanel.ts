@@ -18,11 +18,12 @@ interface PanelSession {
 }
 
 interface PanelMessage {
-	type: 'ready' | 'editValue' | 'reload' | 'selectSchema' | 'save' | 'editSchema';
+	type: 'ready' | 'editValue' | 'reload' | 'selectSchema' | 'save' | 'editSchema' | 'mutateArray';
 	path?: string;
 	value?: unknown;
 	valueType?: SchemaValueType;
 	updates?: SchemaEditPayload;
+	mutation?: ArrayMutationPayload;
 }
 
 interface SchemaEditPayload {
@@ -35,6 +36,13 @@ interface SchemaEditPayload {
 	rangeMin?: number | null;
 	rangeMax?: number | null;
 	rangeOptions?: Array<string | number> | null;
+}
+
+interface ArrayMutationPayload {
+	kind: 'add' | 'remove' | 'clone';
+	index?: number;
+	value?: unknown;
+	valueType?: SchemaValueType;
 }
 
 export class JsonEditorPanel implements vscode.Disposable {
@@ -110,6 +118,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 				case 'editSchema':
 					if (message.path && message.updates) {
 						void this.updateSchemaEntry(message.path, message.updates);
+					}
+					break;
+				case 'mutateArray':
+					if (message.path && message.mutation) {
+						void this.mutateArray(message.path, message.mutation);
 					}
 					break;
 				default:
@@ -259,25 +272,117 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const bytes = await vscode.workspace.fs.readFile(this.session.schema.uri);
 			const text = Buffer.from(bytes).toString('utf8');
 			const document = JSON.parse(text) as Record<string, unknown>;
-		const existing = this.session.schema.getField(pathKey);
-		const schemaPath = existing?.schemaPath ?? deriveSchemaPath(pathKey, document);
-		const target = schemaPath ? resolveSchemaTarget(document, schemaPath) : undefined;
-		if (!target) {
-			this.postStatus('error', 'Failed to locate schema entry.');
+			const existing = this.session.schema.getField(pathKey);
+			const schemaPath = existing?.schemaPath ?? deriveSchemaPath(pathKey, document);
+			const target = schemaPath ? resolveSchemaTarget(document, schemaPath) : undefined;
+			if (!target) {
+				this.postStatus('error', 'Failed to locate schema entry.');
 				return;
 			}
 
 			applySchemaUpdates(target, updates);
 			const configuration = vscode.workspace.getConfiguration('configEditor');
-		const indent = Math.max(0, configuration.get<number>('indentSize', 2));
-		const updated = JSON.stringify(document, null, indent) + '\n';
-		await vscode.workspace.fs.writeFile(this.session.schema.uri, Buffer.from(updated, 'utf8'));
-		this.session.schema = await readSchemaFile(this.session.schema.uri);
-		this.syncState();
-	} catch (error) {
-		this.postStatus('error', `Failed to update schema: ${getErrorMessage(error)}`);
+			const indent = Math.max(0, configuration.get<number>('indentSize', 2));
+			const updated = JSON.stringify(document, null, indent) + '\n';
+			await vscode.workspace.fs.writeFile(this.session.schema.uri, Buffer.from(updated, 'utf8'));
+			this.session.schema = await readSchemaFile(this.session.schema.uri);
+			this.syncState();
+		} catch (error) {
+			this.postStatus('error', `Failed to update schema: ${getErrorMessage(error)}`);
+		}
 	}
-}
+
+	private async mutateArray(pathKey: string, mutation: ArrayMutationPayload): Promise<void> {
+		if (!this.session) {
+			return;
+		}
+
+		const segments = parsePathKey(pathKey);
+		const target = segments.length === 0 ? this.session.data : getValueAtPath(this.session.data, segments);
+		if (!Array.isArray(target)) {
+			this.postStatus('error', 'Selected node is not an array.');
+			return;
+		}
+
+		const working = [...target];
+		const resolvedIndex = this.normalizeArrayIndex(mutation.kind, working.length, mutation.index);
+		if (resolvedIndex === undefined) {
+			this.postStatus('error', 'Invalid index for array operation.');
+			return;
+		}
+
+		let insertedValue: unknown = undefined;
+		if (mutation.kind === 'add') {
+			if (mutation.valueType) {
+				insertedValue = this.castValue(mutation.value, mutation.valueType);
+				if (insertedValue === undefined) {
+					this.postStatus('error', 'Failed to cast value for insertion.');
+					return;
+				}
+			} else {
+				insertedValue = mutation.value;
+			}
+
+			if (insertedValue === undefined) {
+				insertedValue = null;
+			}
+
+			working.splice(resolvedIndex, 0, insertedValue);
+		} else if (mutation.kind === 'remove') {
+			if (working.length === 0) {
+				this.postStatus('error', 'Array is empty.');
+				return;
+			}
+			working.splice(resolvedIndex, 1);
+		} else if (mutation.kind === 'clone') {
+			if (working.length === 0) {
+				this.postStatus('error', 'Array is empty.');
+				return;
+			}
+			const sourceIdx = Math.min(Math.max(0, resolvedIndex), working.length - 1);
+			const cloneSource = working[sourceIdx];
+			insertedValue = this.deepClone(cloneSource);
+			working.splice(sourceIdx + 1, 0, insertedValue);
+		}
+
+		if (segments.length === 0) {
+			this.session.data = working;
+		} else {
+			if (!setValueAtPath(this.session.data, segments, working)) {
+				this.postStatus('error', 'Failed to apply array change.');
+				return;
+			}
+		}
+
+		const affectedPath = pathKey || '';
+		this.modifiedPaths.add(affectedPath);
+		this.syncState();
+		this.postStatus('info', 'Array updated (unsaved).');
+	}
+
+	private normalizeArrayIndex(kind: ArrayMutationPayload['kind'], length: number, index?: number): number | undefined {
+		if (length < 0) {
+			return undefined;
+		}
+		const maxAdd = length;
+		const maxExisting = Math.max(0, length - 1);
+		if (index === undefined || Number.isNaN(index)) {
+			return kind === 'add' ? length : maxExisting;
+		}
+		const clamped = Math.max(0, Math.trunc(index));
+		if (kind === 'add') {
+			return clamped > maxAdd ? maxAdd : clamped;
+		}
+		return clamped > maxExisting ? maxExisting : clamped;
+	}
+
+	private deepClone<T>(value: T): T {
+		try {
+			return JSON.parse(JSON.stringify(value)) as T;
+		} catch {
+			return value;
+		}
+	}
 
 	private castValue(value: unknown, type: SchemaValueType): unknown {
 		if (value === null || value === undefined) {
@@ -692,6 +797,15 @@ export class JsonEditorPanel implements vscode.Disposable {
 			color: var(--vscode-descriptionForeground);
 			margin-top: 0.4rem;
 		}
+		.array-actions {
+			display: flex;
+			gap: 0.4rem;
+			flex-wrap: wrap;
+		}
+		.array-help {
+			font-size: 0.85rem;
+			color: var(--vscode-descriptionForeground);
+		}
 		.detail-row input.no-spinner::-webkit-outer-spin-button,
 		.detail-row input.no-spinner::-webkit-inner-spin-button {
 			-webkit-appearance: none;
@@ -798,6 +912,17 @@ export class JsonEditorPanel implements vscode.Disposable {
 					<div class="schema-note">For object nodes you can change visibility, label, and description.</div>
 				</div>
 			</div>
+			<div id="arrayEditor" style="display:none;">
+				<div class="detail-row">
+					<label>Array actions</label>
+					<div class="array-actions">
+						<button id="arrayAddBtn" type="button">Add item</button>
+						<button id="arrayCloneBtn" type="button">Clone item</button>
+						<button id="arrayRemoveBtn" type="button">Remove item</button>
+					</div>
+					<div class="array-help" id="arrayHelp">Select an array node to manage items.</div>
+				</div>
+			</div>
 			<div id="status" class="status"></div>
 		</div>
 	</div>
@@ -826,6 +951,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const schemaRangeMinInput = document.getElementById('schemaRangeMin');
 			const schemaRangeMaxInput = document.getElementById('schemaRangeMax');
 			const schemaRangeOptionsInput = document.getElementById('schemaRangeOptions');
+			const arrayEditor = document.getElementById('arrayEditor');
+			const arrayAddBtn = document.getElementById('arrayAddBtn');
+			const arrayCloneBtn = document.getElementById('arrayCloneBtn');
+			const arrayRemoveBtn = document.getElementById('arrayRemoveBtn');
+			const arrayHelp = document.getElementById('arrayHelp');
 			const statusNode = document.getElementById('status');
 			const saveFileBtn = document.getElementById('saveFileBtn');
 			const schemaSaveBtn = document.getElementById('schemaSaveBtn');
@@ -970,6 +1100,28 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 				enterSchemaEditor(pathKey);
 			});
+
+			if (arrayAddBtn) {
+				arrayAddBtn.addEventListener('click', () => {
+					if (currentSelection && Array.isArray(currentSelection.value)) {
+						handleArrayAdd(currentSelection.pathKey, currentSelection.value);
+					}
+				});
+			}
+			if (arrayRemoveBtn) {
+				arrayRemoveBtn.addEventListener('click', () => {
+					if (currentSelection && Array.isArray(currentSelection.value)) {
+						handleArrayRemove(currentSelection.pathKey, currentSelection.value);
+					}
+				});
+			}
+			if (arrayCloneBtn) {
+				arrayCloneBtn.addEventListener('click', () => {
+					if (currentSelection && Array.isArray(currentSelection.value)) {
+						handleArrayClone(currentSelection.pathKey, currentSelection.value);
+					}
+				});
+			}
 
 			searchBox.addEventListener('input', () => {
 				renderTree(searchBox.value);
@@ -1360,6 +1512,15 @@ export class JsonEditorPanel implements vscode.Disposable {
 			}
 
 			function renderValueEditor(value, pathKey) {
+				if (Array.isArray(value)) {
+					renderArrayEditor(value, pathKey);
+					return;
+				}
+
+				if (arrayEditor) {
+					arrayEditor.style.display = 'none';
+				}
+
 				if (value && typeof value === 'object') {
 					valueEditor.style.display = 'none';
 					selectedKey.textContent = pathKey || '(root)';
@@ -1430,6 +1591,218 @@ export class JsonEditorPanel implements vscode.Disposable {
 
 				valueControls.appendChild(editor);
 				setupEditorCommit(editor, pathKey, type, schemaEntry);
+			}
+
+			function renderArrayEditor(value, pathKey) {
+				if (!arrayEditor) {
+					return;
+				}
+				arrayEditor.style.display = 'block';
+				if (valueEditor) {
+					valueEditor.style.display = 'none';
+				}
+				selectedKey.textContent = pathKey || '(root)';
+				if (arrayHelp) {
+					arrayHelp.textContent = 'Length: ' + value.length + '. Add inserts at end by default.';
+				}
+				arrayEditor.dataset.path = pathKey || '';
+			}
+
+			function handleArrayAdd(pathKey, currentArray) {
+				const itemSchema = getArrayItemSchema(pathKey);
+				const defaultIndex = Array.isArray(currentArray) ? currentArray.length : 0;
+				const index = promptArrayIndex('add', currentArray.length, defaultIndex);
+				if (index === null) {
+					return;
+				}
+				const picked = promptArrayValue(itemSchema);
+				if (!picked) {
+					return;
+				}
+				vscode.postMessage({
+					type: 'mutateArray',
+					path: pathKey || '',
+					mutation: { kind: 'add', index, value: picked.value, valueType: picked.valueType }
+				});
+			}
+
+			function handleArrayRemove(pathKey, currentArray) {
+				if (!Array.isArray(currentArray) || currentArray.length === 0) {
+					setStatusError('Array is empty.');
+					return;
+				}
+				const defaultIndex = Math.max(0, currentArray.length - 1);
+				const index = promptArrayIndex('remove', currentArray.length, defaultIndex);
+				if (index === null) {
+					return;
+				}
+				vscode.postMessage({ type: 'mutateArray', path: pathKey || '', mutation: { kind: 'remove', index } });
+			}
+
+			function handleArrayClone(pathKey, currentArray) {
+				if (!Array.isArray(currentArray) || currentArray.length === 0) {
+					setStatusError('Array is empty.');
+					return;
+				}
+				const defaultIndex = Math.max(0, currentArray.length - 1);
+				const index = promptArrayIndex('clone', currentArray.length, defaultIndex);
+				if (index === null) {
+					return;
+				}
+				vscode.postMessage({ type: 'mutateArray', path: pathKey || '', mutation: { kind: 'clone', index } });
+			}
+
+			function promptArrayIndex(kind, length, defaultIndex) {
+				const label =
+					kind === 'add'
+						? 'Insert index (0-' + length + ', default append)'
+						: 'Target index (0-' + Math.max(0, length - 1) + ')';
+				const raw = window.prompt(label, String(defaultIndex));
+				if (raw === null) {
+					return null;
+				}
+				if (raw.trim().length === 0) {
+					return kind === 'add' ? length : Math.max(0, length - 1);
+				}
+				const parsed = Number.parseInt(raw, 10);
+				if (Number.isNaN(parsed) || parsed < 0) {
+					setStatusError('Enter a valid index.');
+					return null;
+				}
+				return parsed;
+			}
+
+			function getArrayItemSchema(pathKey) {
+				const base = pathKey || '';
+				const candidate = base.length > 0 ? base + '[0]' : '[0]';
+				return schema[candidate];
+			}
+
+			function promptArrayValue(itemSchema) {
+				const normalizedType = normalizeSchemaType(itemSchema?.type || itemSchema?.rawType || 'string');
+				const options = itemSchema?.enum || (itemSchema?.range && itemSchema.range.options);
+				if (options && Array.isArray(options) && options.length > 0) {
+					const pick = window.prompt('Select value (' + options.join(', ') + ')', String(options[0]));
+					if (pick === null) {
+						return null;
+					}
+					return { value: pick, valueType: normalizedType };
+				}
+
+				if (normalizedType === 'boolean') {
+					const raw = window.prompt('Enter value (true/false)', 'true');
+					if (raw === null) {
+						return null;
+					}
+					return { value: raw.toLowerCase() === 'true', valueType: 'boolean' };
+				}
+
+				if (normalizedType === 'number' || normalizedType === 'integer') {
+					const raw = window.prompt('Enter number', '');
+					if (raw === null) {
+						return null;
+					}
+					const parsed = Number(raw);
+					if (Number.isNaN(parsed)) {
+						setStatusError('Enter a valid number.');
+						return null;
+					}
+					return { value: parsed, valueType: normalizedType };
+				}
+
+				if (normalizedType === 'string') {
+					const raw = window.prompt('Enter value', '');
+					if (raw === null) {
+						return null;
+					}
+					return { value: raw, valueType: 'string' };
+				}
+
+				return promptSchemaLessValue();
+			}
+
+			function promptSchemaLessValue() {
+				const rawType = window.prompt('Value type (string, number, integer, boolean, object, array, null)', 'string');
+				if (rawType === null) {
+					return null;
+				}
+				const normalized = normalizeSchemaType(rawType);
+				if (normalized === 'boolean') {
+					const raw = window.prompt('Enter value (true/false)', 'true');
+					if (raw === null) {
+						return null;
+					}
+					return { value: raw.toLowerCase() === 'true', valueType: 'boolean' };
+				}
+				if (normalized === 'number' || normalized === 'integer') {
+					const raw = window.prompt('Enter number', '');
+					if (raw === null) {
+						return null;
+					}
+					const parsed = Number(raw);
+					if (Number.isNaN(parsed)) {
+						setStatusError('Enter a valid number.');
+						return null;
+					}
+					return { value: parsed, valueType: normalized };
+				}
+				if (normalized === 'string') {
+					const raw = window.prompt('Enter value', '');
+					if (raw === null) {
+						return null;
+					}
+					return { value: raw, valueType: 'string' };
+				}
+				if (normalized === 'object') {
+					const raw = window.prompt('Enter JSON object (default {})', '{}');
+					if (raw === null) {
+						return null;
+					}
+					try {
+						const parsed = JSON.parse(raw.trim().length === 0 ? '{}' : raw);
+						return { value: parsed, valueType: undefined };
+					} catch {
+						setStatusError('Invalid JSON object.');
+						return null;
+					}
+				}
+				if (normalized === 'array') {
+					const raw = window.prompt('Enter JSON array (default [])', '[]');
+					if (raw === null) {
+						return null;
+					}
+					try {
+						const parsed = JSON.parse(raw.trim().length === 0 ? '[]' : raw);
+						return { value: parsed, valueType: undefined };
+					} catch {
+						setStatusError('Invalid JSON array.');
+						return null;
+					}
+				}
+				if (normalized === 'null') {
+					return { value: null, valueType: undefined };
+				}
+				return { value: '', valueType: 'string' };
+			}
+
+			function normalizeSchemaType(type) {
+				const lowered = String(type || '').toLowerCase();
+				if (['integer', 'number', 'boolean', 'string'].includes(lowered)) {
+					return lowered;
+				}
+				if (lowered === 'float') {
+					return 'number';
+				}
+				if (lowered === 'object') {
+					return 'object';
+				}
+				if (lowered === 'array') {
+					return 'array';
+				}
+				if (lowered === 'null') {
+					return 'null';
+				}
+				return 'string';
 			}
 
 			function getValueForPath(pathKey) {
