@@ -4,6 +4,10 @@ All notable changes to the "config-editor" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.7] - 2025-11-21
+
+- Fixed packaged VSIX missing runtime dependencies by including `node_modules`, preventing `config-editor.openVisualEditor` from failing to register.
+
 ## [0.1.6] - 2025-11-21
 
 - Added schema-aware array item management (Add/Remove) with inline index/type/value inputs; selecting an element preselects its index and shows Remove.
