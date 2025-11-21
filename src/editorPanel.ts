@@ -1214,13 +1214,13 @@ export class JsonEditorPanel implements vscode.Disposable {
 				</div>
 				<div class="detail-row" id="arrayValueRow" style="display:none;">
 					<label for="arrayValueInput">Value</label>
-					<div id="arrayValueHint" class="array-help">Select a type, then enter the value. Objects/arrays should be JSON.</div>
 					<input id="arrayValueInput" type="text" />
 					<select id="arrayBoolSelect" style="display:none;">
 						<option value="true">true</option>
 						<option value="false">false</option>
 					</select>
 					<textarea id="arrayJsonInput" style="display:none;" rows="3"></textarea>
+					<div id="arrayValueHint" class="array-help">Select a type, then enter the value. Objects/arrays should be JSON.</div>
 					<div class="array-actions" style="margin-top:0.4rem;">
 						<button id="arrayAddBtn" type="button">Add item</button>
 						<button id="arrayRemoveBtn" type="button">Remove item</button>

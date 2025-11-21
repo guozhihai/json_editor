@@ -38,6 +38,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Moved array Add/Remove buttons beneath the value hint/input section for clearer workflow.
 - Clearing inline validation messages when the value type is changed to avoid stale warnings.
 
+## [0.2.8] - 2025-11-21
+
+- Moved array value hint text below the input controls to keep focus on editing first.
+
 ## [0.1.5] - 2025-11-20
 
 - Replaced extension icon with updated artwork for Marketplace and VS Code.
