@@ -9,7 +9,7 @@
     "url": "https://github.com/guozhihai/json_editor.git"
   },
   "license": "MIT",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "engines": {
     "vscode": "^1.106.0"
   },
@@ -67,6 +67,9 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.2.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.106.0",

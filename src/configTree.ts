@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { parse as parseJsonc } from 'jsonc-parser';
 import {
 	ConfigSchema,
 	SchemaFieldDefinition,
@@ -188,7 +189,7 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<ConfigNode>, 
 		try {
 			const bytes = await vscode.workspace.fs.readFile(uri);
 			const text = Buffer.from(bytes).toString('utf8');
-			const parsed = JSON.parse(text);
+			const parsed = parseJsonc(text);
 			const schema = await this.loadSchema(uri);
 			this.session = { uri, data: parsed, schema };
 			this.watchConfig(uri);

@@ -9,6 +9,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Added array item management in Webview (add/clone/remove) with schema-aware prompts and schema-less type selection.
 - Arrays now show inline actions when selected; inputs support booleans, numbers, enums, objects/arrays (via JSON), and defaults when no schema is present.
 
+## [0.2.1] - 2025-11-20
+
+- Fixed "No config loaded" when opening files with comments/trailing commas by parsing JSONC (via jsonc-parser).
+- Added runtime dependency on jsonc-parser to accept JSON with comments; saves are still emitted as canonical JSON.
+
 ## [0.1.5] - 2025-11-20
 
 - Replaced extension icon with updated artwork for Marketplace and VS Code.
