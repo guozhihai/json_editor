@@ -1226,6 +1226,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 						<option value="false">false</option>
 					</select>
 					<textarea id="arrayJsonInput" style="display:none;" rows="3"></textarea>
+					<div id="arrayValueHint" class="array-help">Select a type, then enter the value. Objects/arrays should be JSON.</div>
 				</div>
 			</div>
 			<div id="status" class="status"></div>
@@ -1270,6 +1271,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const arrayValueInput = document.getElementById('arrayValueInput');
 			const arrayBoolSelect = document.getElementById('arrayBoolSelect');
 			const arrayJsonInput = document.getElementById('arrayJsonInput');
+			const arrayValueHint = document.getElementById('arrayValueHint');
 			const statusNode = document.getElementById('status');
 			const saveFileBtn = document.getElementById('saveFileBtn');
 			const schemaSaveBtn = document.getElementById('schemaSaveBtn');
@@ -1979,6 +1981,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 				arrayValueInput.style.display = 'none';
 				arrayBoolSelect.style.display = 'none';
 				arrayJsonInput.style.display = 'none';
+				updateArrayHint(type);
 				if (type === 'boolean') {
 					arrayBoolSelect.style.display = '';
 					if (currentValue !== undefined) {
@@ -2078,6 +2081,22 @@ export class JsonEditorPanel implements vscode.Disposable {
 					return 'object';
 				}
 				return 'string';
+			}
+
+			function updateArrayHint(type) {
+				if (!arrayValueHint) {
+					return;
+				}
+				const base = {
+					string: 'Enter plain text.',
+					number: 'Enter a number (decimal ok).',
+					integer: 'Enter an integer.',
+					boolean: 'Select true/false.',
+					object: 'Enter JSON object, e.g., {"id":"H","name":"Example"}.',
+					array: 'Enter JSON array, e.g., [{"id":"H"}].',
+					null: 'Value will be null.'
+				};
+				arrayValueHint.textContent = base[type] || 'Select a type, then enter the value.';
 			}
 
 			function handleArraySubmit(kind) {
