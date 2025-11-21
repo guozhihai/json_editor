@@ -19,12 +19,13 @@ interface PanelSession {
 }
 
 interface PanelMessage {
-	type: 'ready' | 'editValue' | 'reload' | 'selectSchema' | 'save' | 'editSchema' | 'mutateArray';
+	type: 'ready' | 'editValue' | 'reload' | 'selectSchema' | 'save' | 'editSchema' | 'arrayAction' | 'mutateArray';
 	path?: string;
 	value?: unknown;
 	valueType?: SchemaValueType;
 	updates?: SchemaEditPayload;
 	mutation?: ArrayMutationPayload;
+	arrayKind?: ArrayMutationPayload['kind'];
 }
 
 interface SchemaEditPayload {
@@ -119,6 +120,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 				case 'editSchema':
 					if (message.path && message.updates) {
 						void this.updateSchemaEntry(message.path, message.updates);
+					}
+					break;
+				case 'arrayAction':
+					if (message.path && message.arrayKind) {
+						void this.handleArrayAction(message.path, message.arrayKind);
 					}
 					break;
 				case 'mutateArray':
@@ -443,6 +449,275 @@ export class JsonEditorPanel implements vscode.Disposable {
 		}
 
 		return true;
+	}
+
+	private async handleArrayAction(pathKey: string, kind: ArrayMutationPayload['kind']): Promise<void> {
+		if (!this.session) {
+			return;
+		}
+
+		const segments = parsePathKey(pathKey);
+		const target = segments.length === 0 ? this.session.data : getValueAtPath(this.session.data, segments);
+		if (!Array.isArray(target)) {
+			this.postStatus('error', 'Selected node is not an array.');
+			return;
+		}
+
+		const length = target.length;
+		const schemaEntry = this.session.schema?.getField(pathKey ? `${pathKey}[0]` : '[0]');
+
+		const index = await this.promptArrayIndex(kind, length);
+		if (index === undefined) {
+			return;
+		}
+
+		if (kind === 'remove' || kind === 'clone') {
+			await this.mutateArray(pathKey, { kind, index });
+			return;
+		}
+
+		const picked = await this.promptArrayValue(schemaEntry);
+		if (!picked) {
+			return;
+		}
+
+		await this.mutateArray(pathKey, {
+			kind: 'add',
+			index,
+			value: picked.value,
+			valueType: picked.valueType
+		});
+	}
+
+	private async promptArrayIndex(
+		kind: ArrayMutationPayload['kind'],
+		length: number
+	): Promise<number | undefined> {
+		const defaultIndex = kind === 'add' ? length : Math.max(0, length - 1);
+		const maxIndex = kind === 'add' ? length : Math.max(0, length - 1);
+		const input = await vscode.window.showInputBox({
+			title: kind === 'add' ? 'Insert index (0-based)' : 'Target index (0-based)',
+			value: String(defaultIndex),
+			validateInput: (text) => {
+				const parsed = Number.parseInt(text, 10);
+				if (Number.isNaN(parsed) || parsed < 0) {
+					return 'Enter a non-negative integer.';
+				}
+				if (parsed > maxIndex) {
+					return `Index must be <= ${maxIndex}.`;
+				}
+
+				return undefined;
+			}
+		});
+
+		if (input === undefined) {
+			return undefined;
+		}
+
+		const parsed = Number.parseInt(input, 10);
+		return Number.isNaN(parsed) ? undefined : parsed;
+	}
+
+	private async promptArrayValue(
+		schemaEntry: SchemaFieldDefinition | undefined
+	): Promise<{ value: unknown; valueType: SchemaValueType | undefined } | undefined> {
+		const options = schemaEntry?.enum ?? schemaEntry?.range?.options;
+		if (options && options.length > 0) {
+			const pick = await vscode.window.showQuickPick(
+				options.map((entry) => ({
+					label: String(entry),
+					value: entry
+				})),
+				{ placeHolder: 'Select value' }
+			);
+
+			if (!pick) {
+				return undefined;
+			}
+
+			return { value: pick.value, valueType: this.inferValueTypeFromLiteral(pick.value) };
+		}
+
+		const normalizedType = this.normalizeSchemaType(schemaEntry?.type ?? schemaEntry?.rawType ?? 'string');
+		if (normalizedType === 'boolean') {
+			const pick = await vscode.window.showQuickPick(
+				[
+					{ label: 'true', value: true },
+					{ label: 'false', value: false }
+				],
+				{ placeHolder: 'Select boolean value' }
+			);
+			if (!pick) {
+				return undefined;
+			}
+			return { value: pick.value, valueType: 'boolean' };
+		}
+
+		if (normalizedType === 'integer' || normalizedType === 'number') {
+			const input = await vscode.window.showInputBox({
+				title: normalizedType === 'integer' ? 'Enter integer value' : 'Enter number value',
+				validateInput: (text) => {
+					const parsed = normalizedType === 'integer' ? Number.parseInt(text, 10) : Number.parseFloat(text);
+					return Number.isNaN(parsed) ? 'Enter a valid number.' : undefined;
+				}
+			});
+			if (input === undefined) {
+				return undefined;
+			}
+			const parsed = normalizedType === 'integer' ? Number.parseInt(input, 10) : Number.parseFloat(input);
+			return { value: parsed, valueType: normalizedType };
+		}
+
+		// string or schema-less types
+		if (schemaEntry) {
+			const input = await vscode.window.showInputBox({ title: 'Enter value', value: '' });
+			if (input === undefined) {
+				return undefined;
+			}
+			return { value: input, valueType: 'string' };
+		}
+
+		const typePick = await vscode.window.showQuickPick(
+			[
+				{ label: 'string', value: 'string' as const },
+				{ label: 'number', value: 'number' as const },
+				{ label: 'integer', value: 'integer' as const },
+				{ label: 'boolean', value: 'boolean' as const },
+				{ label: 'object', value: 'object' as const },
+				{ label: 'array', value: 'array' as const },
+				{ label: 'null', value: 'null' as const }
+			],
+			{ placeHolder: 'Select value type' }
+		);
+		if (!typePick) {
+			return undefined;
+		}
+
+		switch (typePick.value) {
+			case 'boolean': {
+				const pick = await vscode.window.showQuickPick(
+					[
+						{ label: 'true', value: true },
+						{ label: 'false', value: false }
+					],
+					{ placeHolder: 'Select boolean value' }
+				);
+				if (!pick) {
+					return undefined;
+				}
+				return { value: pick.value, valueType: 'boolean' };
+			}
+			case 'number':
+			case 'integer': {
+				const input = await vscode.window.showInputBox({
+					title: typePick.value === 'integer' ? 'Enter integer value' : 'Enter number value',
+					value: typePick.value === 'integer' ? '0' : '',
+					validateInput: (text) => {
+						const parsed = typePick.value === 'integer' ? Number.parseInt(text, 10) : Number.parseFloat(text);
+						return Number.isNaN(parsed) ? 'Enter a valid number.' : undefined;
+					}
+				});
+				if (input === undefined) {
+					return undefined;
+				}
+				const parsed = typePick.value === 'integer' ? Number.parseInt(input, 10) : Number.parseFloat(input);
+				return { value: parsed, valueType: typePick.value };
+			}
+			case 'object': {
+				const input = await vscode.window.showInputBox({
+					title: 'Enter JSON object',
+					value: '{}',
+					validateInput: (text) => {
+						try {
+							const parsed = JSON.parse(text.trim().length === 0 ? '{}' : text);
+							return typeof parsed === 'object' && !Array.isArray(parsed) && parsed !== null
+								? undefined
+								: 'Enter a JSON object (e.g., {"key":"value"}).';
+						} catch {
+							return 'Enter valid JSON.';
+						}
+					}
+				});
+				if (input === undefined) {
+					return undefined;
+				}
+				try {
+					const parsed = JSON.parse(input.trim().length === 0 ? '{}' : input);
+					return { value: parsed, valueType: undefined };
+				} catch {
+					return undefined;
+				}
+			}
+			case 'array': {
+				const input = await vscode.window.showInputBox({
+					title: 'Enter JSON array',
+					value: '[]',
+					validateInput: (text) => {
+						try {
+							const parsed = JSON.parse(text.trim().length === 0 ? '[]' : text);
+							return Array.isArray(parsed) ? undefined : 'Enter a JSON array (e.g., [1,2]).';
+						} catch {
+							return 'Enter valid JSON.';
+						}
+					}
+				});
+				if (input === undefined) {
+					return undefined;
+				}
+				try {
+					const parsed = JSON.parse(input.trim().length === 0 ? '[]' : input);
+					return { value: parsed, valueType: undefined };
+				} catch {
+					return undefined;
+				}
+			}
+			case 'null':
+				return { value: null, valueType: undefined };
+			default: {
+				const input = await vscode.window.showInputBox({ title: 'Enter value', value: '' });
+				if (input === undefined) {
+					return undefined;
+				}
+				return { value: input, valueType: 'string' };
+			}
+		}
+	}
+
+	private normalizeSchemaType(type: string | undefined): SchemaValueType | 'object' | 'array' | 'null' {
+		const lowered = (type ?? '').trim().toLowerCase();
+		if (['integer', 'number', 'boolean', 'string'].includes(lowered)) {
+			return lowered as SchemaValueType;
+		}
+		if (lowered === 'float' || lowered === 'double' || lowered === 'decimal') {
+			return 'number';
+		}
+		if (lowered === 'enum') {
+			return 'string';
+		}
+		if (lowered === 'object') {
+			return 'object';
+		}
+		if (lowered === 'array') {
+			return 'array';
+		}
+		if (lowered === 'null') {
+			return 'null';
+		}
+		return 'string';
+	}
+
+	private inferValueTypeFromLiteral(value: unknown): SchemaValueType | undefined {
+		if (typeof value === 'boolean') {
+			return 'boolean';
+		}
+		if (typeof value === 'number') {
+			return Number.isInteger(value) ? 'integer' : 'number';
+		}
+		if (typeof value === 'string') {
+			return 'string';
+		}
+		return undefined;
 	}
 
 	private async loadDocument(uri: vscode.Uri, notify: boolean): Promise<void> {
@@ -1105,21 +1380,33 @@ export class JsonEditorPanel implements vscode.Disposable {
 			if (arrayAddBtn) {
 				arrayAddBtn.addEventListener('click', () => {
 					if (currentSelection && Array.isArray(currentSelection.value)) {
-						handleArrayAdd(currentSelection.pathKey, currentSelection.value);
+						vscode.postMessage({
+							type: 'arrayAction',
+							path: currentSelection.pathKey || '',
+							arrayKind: 'add'
+						});
 					}
 				});
 			}
 			if (arrayRemoveBtn) {
 				arrayRemoveBtn.addEventListener('click', () => {
 					if (currentSelection && Array.isArray(currentSelection.value)) {
-						handleArrayRemove(currentSelection.pathKey, currentSelection.value);
+						vscode.postMessage({
+							type: 'arrayAction',
+							path: currentSelection.pathKey || '',
+							arrayKind: 'remove'
+						});
 					}
 				});
 			}
 			if (arrayCloneBtn) {
 				arrayCloneBtn.addEventListener('click', () => {
 					if (currentSelection && Array.isArray(currentSelection.value)) {
-						handleArrayClone(currentSelection.pathKey, currentSelection.value);
+						vscode.postMessage({
+							type: 'arrayAction',
+							path: currentSelection.pathKey || '',
+							arrayKind: 'clone'
+						});
 					}
 				});
 			}
@@ -1609,202 +1896,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 				arrayEditor.dataset.path = pathKey || '';
 			}
 
-			function handleArrayAdd(pathKey, currentArray) {
-				const itemSchema = getArrayItemSchema(pathKey);
-				const defaultIndex = Array.isArray(currentArray) ? currentArray.length : 0;
-				const index = promptArrayIndex('add', currentArray.length, defaultIndex);
-				if (index === null) {
-					return;
-				}
-				const picked = promptArrayValue(itemSchema);
-				if (!picked) {
-					return;
-				}
-				vscode.postMessage({
-					type: 'mutateArray',
-					path: pathKey || '',
-					mutation: { kind: 'add', index, value: picked.value, valueType: picked.valueType }
-				});
-			}
-
-			function handleArrayRemove(pathKey, currentArray) {
-				if (!Array.isArray(currentArray) || currentArray.length === 0) {
-					setStatusError('Array is empty.');
-					return;
-				}
-				const defaultIndex = Math.max(0, currentArray.length - 1);
-				const index = promptArrayIndex('remove', currentArray.length, defaultIndex);
-				if (index === null) {
-					return;
-				}
-				vscode.postMessage({ type: 'mutateArray', path: pathKey || '', mutation: { kind: 'remove', index } });
-			}
-
-			function handleArrayClone(pathKey, currentArray) {
-				if (!Array.isArray(currentArray) || currentArray.length === 0) {
-					setStatusError('Array is empty.');
-					return;
-				}
-				const defaultIndex = Math.max(0, currentArray.length - 1);
-				const index = promptArrayIndex('clone', currentArray.length, defaultIndex);
-				if (index === null) {
-					return;
-				}
-				vscode.postMessage({ type: 'mutateArray', path: pathKey || '', mutation: { kind: 'clone', index } });
-			}
-
-			function promptArrayIndex(kind, length, defaultIndex) {
-				const label =
-					kind === 'add'
-						? 'Insert index (0-' + length + ', default append)'
-						: 'Target index (0-' + Math.max(0, length - 1) + ')';
-				const raw = window.prompt(label, String(defaultIndex));
-				if (raw === null) {
-					return null;
-				}
-				if (raw.trim().length === 0) {
-					return kind === 'add' ? length : Math.max(0, length - 1);
-				}
-				const parsed = Number.parseInt(raw, 10);
-				if (Number.isNaN(parsed) || parsed < 0) {
-					setStatusError('Enter a valid index.');
-					return null;
-				}
-				return parsed;
-			}
-
-			function getArrayItemSchema(pathKey) {
-				const base = pathKey || '';
-				const candidate = base.length > 0 ? base + '[0]' : '[0]';
-				return schema[candidate];
-			}
-
-			function promptArrayValue(itemSchema) {
-				const normalizedType = normalizeSchemaType(itemSchema?.type || itemSchema?.rawType || 'string');
-				const options = itemSchema?.enum || (itemSchema?.range && itemSchema.range.options);
-				if (options && Array.isArray(options) && options.length > 0) {
-					const pick = window.prompt('Select value (' + options.join(', ') + ')', String(options[0]));
-					if (pick === null) {
-						return null;
-					}
-					return { value: pick, valueType: normalizedType };
-				}
-
-				if (normalizedType === 'boolean') {
-					const raw = window.prompt('Enter value (true/false)', 'true');
-					if (raw === null) {
-						return null;
-					}
-					return { value: raw.toLowerCase() === 'true', valueType: 'boolean' };
-				}
-
-				if (normalizedType === 'number' || normalizedType === 'integer') {
-					const raw = window.prompt('Enter number', '');
-					if (raw === null) {
-						return null;
-					}
-					const parsed = Number(raw);
-					if (Number.isNaN(parsed)) {
-						setStatusError('Enter a valid number.');
-						return null;
-					}
-					return { value: parsed, valueType: normalizedType };
-				}
-
-				if (normalizedType === 'string') {
-					const raw = window.prompt('Enter value', '');
-					if (raw === null) {
-						return null;
-					}
-					return { value: raw, valueType: 'string' };
-				}
-
-				return promptSchemaLessValue();
-			}
-
-			function promptSchemaLessValue() {
-				const rawType = window.prompt('Value type (string, number, integer, boolean, object, array, null)', 'string');
-				if (rawType === null) {
-					return null;
-				}
-				const normalized = normalizeSchemaType(rawType);
-				if (normalized === 'boolean') {
-					const raw = window.prompt('Enter value (true/false)', 'true');
-					if (raw === null) {
-						return null;
-					}
-					return { value: raw.toLowerCase() === 'true', valueType: 'boolean' };
-				}
-				if (normalized === 'number' || normalized === 'integer') {
-					const raw = window.prompt('Enter number', '');
-					if (raw === null) {
-						return null;
-					}
-					const parsed = Number(raw);
-					if (Number.isNaN(parsed)) {
-						setStatusError('Enter a valid number.');
-						return null;
-					}
-					return { value: parsed, valueType: normalized };
-				}
-				if (normalized === 'string') {
-					const raw = window.prompt('Enter value', '');
-					if (raw === null) {
-						return null;
-					}
-					return { value: raw, valueType: 'string' };
-				}
-				if (normalized === 'object') {
-					const raw = window.prompt('Enter JSON object (default {})', '{}');
-					if (raw === null) {
-						return null;
-					}
-					try {
-						const parsed = JSON.parse(raw.trim().length === 0 ? '{}' : raw);
-						return { value: parsed, valueType: undefined };
-					} catch {
-						setStatusError('Invalid JSON object.');
-						return null;
-					}
-				}
-				if (normalized === 'array') {
-					const raw = window.prompt('Enter JSON array (default [])', '[]');
-					if (raw === null) {
-						return null;
-					}
-					try {
-						const parsed = JSON.parse(raw.trim().length === 0 ? '[]' : raw);
-						return { value: parsed, valueType: undefined };
-					} catch {
-						setStatusError('Invalid JSON array.');
-						return null;
-					}
-				}
-				if (normalized === 'null') {
-					return { value: null, valueType: undefined };
-				}
-				return { value: '', valueType: 'string' };
-			}
-
-			function normalizeSchemaType(type) {
-				const lowered = String(type || '').toLowerCase();
-				if (['integer', 'number', 'boolean', 'string'].includes(lowered)) {
-					return lowered;
-				}
-				if (lowered === 'float') {
-					return 'number';
-				}
-				if (lowered === 'object') {
-					return 'object';
-				}
-				if (lowered === 'array') {
-					return 'array';
-				}
-				if (lowered === 'null') {
-					return 'null';
-				}
-				return 'string';
-			}
+			// prompt helpers removed; prompts handled in extension host to avoid sandbox modal restrictions.
 
 			function getValueForPath(pathKey) {
 				const segments = parsePathKey(pathKey);
