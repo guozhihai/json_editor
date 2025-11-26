@@ -4,6 +4,14 @@ All notable changes to the "config-editor" extension will be documented in this 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.9] - 2025-11-21
+
+- Fixed literal search so regex characters (e.g., `[]`, `\.`) no longer match when regex mode is off, and aligned path segment handling to prevent partial hits.
+- Added label-path matching so schema labels (e.g., `MicroSpot`) can be used in search queries like `MicroSpot.dir`.
+- UI: search toggle styling refined to match VS Code search panel and improve ON/OFF visibility; embedded toggles inside the search box.
+- Schema lookup: expanded default detection to handle `.json`/`.jsonc` suffix variants in the same folder.
+- Stability: resolved webview runtime errors caused by TypeScript annotations leaking into the bundled script.
+
 ## [0.1.8] - 2025-11-21
 
 - Rebuilt and republished to include runtime dependencies in the VSIX.

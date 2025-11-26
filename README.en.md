@@ -10,6 +10,9 @@ A VS Code extension that edits JSON/JSONC config files with a "tree + form" expe
    - Auto-detects a JSON schema with the `_Schema` suffix next to the target file (e.g., `config.json` <-> `config_Schema.json`).
    - You can manually select/clear a schema via the "Select Schema File" command.
    - If no schema is found, the file is treated as plain JSON.
+4. **Search like VS Code**:
+   - Case / whole word / regex toggles embedded in the search box.
+   - Searches keys, values, schema labels, descriptions, and label-based paths (e.g., `MicroSpot.dir` when a schema label is set).
 4. **What a schema can define**:
    - Show/hide nodes (`visible`).
    - Label (`label`) and description (`description`).

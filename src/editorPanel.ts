@@ -2611,10 +2611,12 @@ export class JsonEditorPanel implements vscode.Disposable {
 				if (!filter.regex) {
 					return true;
 				}
+				const labelPath = getLabelPathFromSegments(segments);
 				const candidates = [
 					rawKey,
 					pathKey,
 					displayLabel,
+					labelPath,
 					schemaEntry?.label,
 					schemaEntry?.description,
 					textValue
