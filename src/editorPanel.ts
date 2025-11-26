@@ -747,7 +747,11 @@ export class JsonEditorPanel implements vscode.Disposable {
 		const suffix = configuration.get<string>('schemaSuffix', '_Schema');
 		const pathInfo = path.parse(configUri.fsPath);
 		const extension = pathInfo.ext || '.json';
-		const defaultSchemaPath = path.join(pathInfo.dir, `${pathInfo.name}${suffix}${extension}`);
+		const extensionCandidates = [extension];
+		if (!extensionCandidates.includes('.json')) {
+			extensionCandidates.push('.json');
+		}
+		const defaultSchemaPaths = extensionCandidates.map((ext) => path.join(pathInfo.dir, `${pathInfo.name}${suffix}${ext}`));
 		const stored = this.workspaceState.get<string>(schemaMappingKey(configUri.fsPath));
 
 		const candidates: vscode.Uri[] = [];
@@ -755,11 +759,15 @@ export class JsonEditorPanel implements vscode.Disposable {
 			candidates.push(vscode.Uri.file(stored));
 		}
 
-		candidates.push(vscode.Uri.file(defaultSchemaPath));
+		for (const schemaPath of defaultSchemaPaths) {
+			candidates.push(vscode.Uri.file(schemaPath));
+		}
 
 		for (const location of resolveAdditionalSchemaLocations()) {
-			const candidate = vscode.Uri.file(path.join(location.fsPath, `${pathInfo.name}${suffix}${extension}`));
-			candidates.push(candidate);
+			for (const ext of extensionCandidates) {
+				const candidate = vscode.Uri.file(path.join(location.fsPath, `${pathInfo.name}${suffix}${ext}`));
+				candidates.push(candidate);
+			}
 		}
 
 		const seen = new Set<string>();
@@ -898,12 +906,108 @@ export class JsonEditorPanel implements vscode.Disposable {
 			padding: 0.5rem 1rem;
 			border-bottom: 1px solid var(--vscode-panel-border);
 		}
-		.toolbar input[type="text"] {
+		.search-group {
+			display: flex;
+			align-items: center;
+			gap: 0.35rem;
 			flex: 1;
-			padding: 0.3rem 0.4rem;
+			min-width: 0;
+		}
+		.search-box {
+			flex: 1;
+			min-width: 0;
+			display: flex;
+			align-items: stretch;
 			border: 1px solid var(--vscode-input-border, #555);
 			background: var(--vscode-input-background);
 			color: var(--vscode-input-foreground);
+			border-radius: 3px;
+			overflow: hidden;
+			height: 28px;
+		}
+		.search-input {
+			flex: 1;
+			padding: 0 0.55rem;
+			border: none;
+			background: transparent;
+			color: inherit;
+			outline: none;
+			min-width: 0;
+			font: inherit;
+			line-height: 1.35;
+		}
+		.search-input.search-error {
+			outline: 1px solid var(--vscode-inputValidation-errorBorder, #e51400);
+			box-shadow: 0 0 0 1px var(--vscode-inputValidation-errorBorder, #e51400);
+		}
+		.search-box:focus-within {
+			border-color: var(--vscode-focusBorder, var(--vscode-input-border, #555));
+			box-shadow: 0 0 0 1px var(--vscode-focusBorder, transparent);
+		}
+		.search-toggles {
+			display: inline-flex;
+			align-items: stretch;
+			border-left: 1px solid var(--vscode-input-border, #555);
+			background: var(--vscode-input-background);
+			height: 100%;
+		}
+		.search-toggle {
+			border: 1px solid transparent;
+			padding: 0 0.55rem;
+			background: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			cursor: pointer;
+			min-width: 32px;
+			border-left: 1px solid var(--vscode-input-border, #555);
+			font: inherit;
+			outline: none;
+			box-shadow: none;
+			border-radius: 0;
+			transition: background 0.08s ease, border-color 0.08s ease, box-shadow 0.08s ease;
+		}
+		.search-toggle:first-child {
+			border-left-color: transparent;
+		}
+		.search-toggle:hover {
+			background: var(--vscode-input-hoverBackground, rgba(255, 255, 255, 0.04));
+		}
+		.search-toggle.active {
+			background: var(--vscode-inputOption-activeBackground, #0e639c);
+			color: var(--vscode-inputOption-activeForeground, var(--vscode-button-foreground));
+			border-color: var(--vscode-inputOption-activeBorder, #89d185);
+			box-shadow: 0 0 0 1px var(--vscode-inputOption-activeBorder, #89d185) inset;
+			border-radius: 2px;
+		}
+		.search-toggle.active:not(:first-child) {
+			border-left-color: var(--vscode-inputOption-activeBorder, #89d185);
+		}
+		.search-toggle:focus-visible {
+			outline: 1px solid var(--vscode-focusBorder, #89d185);
+			outline-offset: -1px;
+		}
+		.search-toggle:not(.active) {
+			color: var(--vscode-input-foreground);
+			background: var(--vscode-input-background);
+			border-color: var(--vscode-input-border, #555);
+		}
+		.search-toggle .underline {
+			position: relative;
+			display: inline-block;
+			padding: 0 2px 3px;
+			text-decoration: none;
+			line-height: 1.05;
+		}
+		.search-toggle .underline::after {
+			content: '';
+			position: absolute;
+			left: -2px;
+			right: -2px;
+			bottom: -1px;
+			height: 8px;
+			border: 1.6px solid currentColor;
+			border-top: 0;
+			border-radius: 0 0 6px 6px;
+			pointer-events: none;
 		}
 		.toolbar button {
 			background: var(--vscode-button-background);
@@ -1117,7 +1221,16 @@ export class JsonEditorPanel implements vscode.Disposable {
 </head>
 <body>
 	<div class="toolbar">
-		<input id="searchBox" type="text" placeholder="Search key or value..." />
+		<div class="search-group">
+			<div class="search-box">
+				<input id="searchBox" class="search-input" type="text" placeholder="Search key or value..." />
+				<div class="search-toggles" role="group" aria-label="Search options">
+					<button id="caseToggle" class="search-toggle" type="button" title="Match Case">Aa</button>
+					<button id="wordToggle" class="search-toggle" type="button" title="Match Whole Word"><span class="underline">ab</span></button>
+					<button id="regexToggle" class="search-toggle" type="button" title="Use Regular Expression">.*</button>
+				</div>
+			</div>
+		</div>
 		<button id="reloadBtn" title="Reload file">Reload</button>
 		<button id="saveFileBtn" title="Save changes to disk">Save</button>
 		<button id="schemaBtn" title="Select schema file">Select Schema</button>
@@ -1235,6 +1348,9 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const vscode = acquireVsCodeApi();
 			const treeContainer = document.getElementById('tree');
 			const searchBox = document.getElementById('searchBox');
+			const caseToggle = document.getElementById('caseToggle');
+			const wordToggle = document.getElementById('wordToggle');
+			const regexToggle = document.getElementById('regexToggle');
 			const selectedKey = document.getElementById('selectedKey');
 			const detailsPanel = document.querySelector('.details');
 			const valueEditor = document.getElementById('valueEditor');
@@ -1275,6 +1391,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 			const schemaCancelBtn = document.getElementById('schemaCancelBtn');
 			const schemaModeToggle = document.getElementById('schemaModeToggle');
 			const schemaToolbar = document.getElementById('schemaToolbar');
+			let viewState = typeof vscode.getState === 'function' ? vscode.getState() || {} : {};
 			let data = undefined;
 			let schema = {};
 			let currentSelection = null;
@@ -1283,10 +1400,22 @@ export class JsonEditorPanel implements vscode.Disposable {
 			let schemaModeActive = false;
 			let schemaModePath = null;
 			let schemaLimitedMode = false;
-			let schemaEditMode = false;
+			let schemaEditMode = !!viewState.schemaEditMode;
+			let searchState = {
+				matchCase: !!viewState.searchMatchCase,
+				wholeWord: !!viewState.searchWholeWord,
+				useRegex: !!viewState.searchUseRegex
+			};
 			const schemaModeToggleInput = schemaModeToggle;
 			const branchControls = new Map();
 			const collapsedPaths = new Set();
+			const labelPathCache = new Map();
+			function updateViewState(patch) {
+				viewState = { ...viewState, ...patch };
+				if (typeof vscode.setState === 'function') {
+					vscode.setState(viewState);
+				}
+			}
 			function hasSchemaUi() {
 				return (
 					schemaEditor &&
@@ -1302,6 +1431,35 @@ export class JsonEditorPanel implements vscode.Disposable {
 					schemaRangeOptionsInput
 				);
 			}
+
+			function persistSearchState() {
+				updateViewState({
+					searchMatchCase: searchState.matchCase,
+					searchWholeWord: searchState.wholeWord,
+					searchUseRegex: searchState.useRegex
+				});
+			}
+
+			function initializeSearchToggle(button, key) {
+				if (!button) {
+					return;
+				}
+				const refresh = () => {
+					button.classList.toggle('active', !!searchState[key]);
+					button.setAttribute('aria-pressed', searchState[key] ? 'true' : 'false');
+				};
+				refresh();
+				button.addEventListener('click', () => {
+					searchState[key] = !searchState[key];
+					persistSearchState();
+					refresh();
+					renderTree(searchBox.value);
+				});
+			}
+
+			initializeSearchToggle(caseToggle, 'matchCase');
+			initializeSearchToggle(wordToggle, 'wholeWord');
+			initializeSearchToggle(regexToggle, 'useRegex');
 
 			document.getElementById('reloadBtn').addEventListener('click', () => {
 				vscode.postMessage({ type: 'reload' });
@@ -1335,20 +1493,14 @@ export class JsonEditorPanel implements vscode.Disposable {
 				});
 			}
 			if (schemaModeToggleInput) {
-				const state = typeof vscode.getState === 'function' ? vscode.getState() : undefined;
-				if (state && typeof state.schemaEditMode === 'boolean') {
-					schemaEditMode = state.schemaEditMode;
-					schemaModeToggleInput.checked = schemaEditMode;
-					if (schemaCancelBtn instanceof HTMLButtonElement) {
-						schemaCancelBtn.disabled = schemaEditMode;
-					}
+				schemaModeToggleInput.checked = schemaEditMode;
+				if (schemaCancelBtn instanceof HTMLButtonElement) {
+					schemaCancelBtn.disabled = schemaEditMode;
 				}
 				schemaModeToggleInput.addEventListener('change', () => {
 					const checked = schemaModeToggleInput.checked;
 					schemaEditMode = checked;
-					if (typeof vscode.setState === 'function') {
-						vscode.setState({ schemaEditMode });
-					}
+					updateViewState({ schemaEditMode });
 					if (schemaCancelBtn instanceof HTMLButtonElement) {
 						schemaCancelBtn.disabled = schemaEditMode;
 					}
@@ -1434,6 +1586,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 				if (msg.type === 'init') {
 					data = msg.payload.data;
 					schema = msg.payload.schema || {};
+					labelPathCache.clear();
 					schemaFilePath = msg.payload.schemaFile || null;
 			if (schemaModeToggleInput) {
 				schemaModeToggleInput.checked = schemaEditMode;
@@ -1471,19 +1624,21 @@ export class JsonEditorPanel implements vscode.Disposable {
 					return;
 				}
 
-				const filter = (filterText || '').toLowerCase();
+				const filterSpec = compileFilter(filterText);
+				const filter = filterSpec && !filterSpec.hasError ? filterSpec : null;
 				treeContainer.innerHTML = '';
 				treeContainer.classList.remove('empty-state');
 				const root = document.createElement('ul');
-				buildNodes(data, [], root, filter);
+				buildNodes(data, [], root, filter, false);
 				treeContainer.appendChild(root);
 				if (currentSelection) {
 					highlightSelection(currentSelection.pathKey);
 				}
 			}
 
-			function buildNodes(value, segments, parent, filter) {
+			function buildNodes(value, segments, parent, filter, forceIncludeDescendants) {
 				let added = false;
+				const shouldShowChildren = !!forceIncludeDescendants;
 				if (Array.isArray(value)) {
 					value.forEach((entry, index) => {
 						const childSegments = [...segments, index];
@@ -1494,17 +1649,27 @@ export class JsonEditorPanel implements vscode.Disposable {
 						const rawKey = '[' + index + ']';
 						const displayLabel = rawKey;
 						const textValue = formatValue(entry);
-						const nodeMatches = matchesFilter(displayLabel, rawKey, textValue, filter);
+						const schemaEntry = schema[pathKey];
+						const nodeMatches = matchesFilter(
+							{ displayLabel, rawKey, textValue, pathKey, schemaEntry, segments: childSegments },
+							filter
+						);
 						if (isContainer(entry)) {
 							const nestedList = document.createElement('ul');
-							const childAdded = buildNodes(entry, childSegments, nestedList, filter);
-							if (!filter || nodeMatches || childAdded) {
-								appendNode(rawKey, entry, childSegments, parent, filter, pathKey, displayLabel, nestedList);
+							const childAdded = buildNodes(
+								entry,
+								childSegments,
+								nestedList,
+								shouldShowChildren || nodeMatches ? null : filter,
+								shouldShowChildren || nodeMatches
+							);
+							if (!filter || nodeMatches || childAdded || shouldShowChildren) {
+								appendNode(rawKey, entry, childSegments, parent, filter, pathKey, displayLabel, nestedList, nodeMatches);
 								added = true;
 							}
 						} else {
-							if (!filter || nodeMatches) {
-								appendNode(rawKey, entry, childSegments, parent, filter, pathKey, displayLabel, null);
+							if (!filter || nodeMatches || shouldShowChildren) {
+								appendNode(rawKey, entry, childSegments, parent, filter, pathKey, displayLabel, null, nodeMatches);
 								added = true;
 							}
 						}
@@ -1522,18 +1687,27 @@ export class JsonEditorPanel implements vscode.Disposable {
 						const schemaEntry = schema[pathKey];
 						const displayLabel = !schemaEditMode && schemaEntry?.label ? schemaEntry.label : key;
 						const textValue = formatValue(value[key]);
-						const nodeMatches = matchesFilter(displayLabel || key, key, textValue, filter);
+						const nodeMatches = matchesFilter(
+							{ displayLabel: displayLabel || key, rawKey: key, textValue, pathKey, schemaEntry, segments: childSegments },
+							filter
+						);
 						const childValue = value[key];
 						if (isContainer(childValue)) {
 							const nestedList = document.createElement('ul');
-							const childAdded = buildNodes(childValue, childSegments, nestedList, filter);
-							if (!filter || nodeMatches || childAdded) {
-								appendNode(key, childValue, childSegments, parent, filter, pathKey, displayLabel, nestedList);
+							const childAdded = buildNodes(
+								childValue,
+								childSegments,
+								nestedList,
+								shouldShowChildren || nodeMatches ? null : filter,
+								shouldShowChildren || nodeMatches
+							);
+							if (!filter || nodeMatches || childAdded || shouldShowChildren) {
+								appendNode(key, childValue, childSegments, parent, filter, pathKey, displayLabel, nestedList, nodeMatches);
 								added = true;
 							}
 						} else {
-							if (!filter || nodeMatches) {
-								appendNode(key, childValue, childSegments, parent, filter, pathKey, displayLabel, null);
+							if (!filter || nodeMatches || shouldShowChildren) {
+								appendNode(key, childValue, childSegments, parent, filter, pathKey, displayLabel, null, nodeMatches);
 								added = true;
 							}
 						}
@@ -1700,7 +1874,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 				}
 			}
 
-			function appendNode(label, value, segments, parent, filter, pathKey, displayLabel, nestedList) {
+			function appendNode(label, value, segments, parent, filter, pathKey, displayLabel, nestedList, nodeMatches) {
 				const li = document.createElement('li');
 				const header = document.createElement('div');
 				header.className = 'node-header';
@@ -1727,7 +1901,7 @@ export class JsonEditorPanel implements vscode.Disposable {
 					header.appendChild(spacer);
 				}
 
-				const button = createNodeButton(label, displayLabel, value, pathKey, filter, isBranch);
+				const button = createNodeButton(label, displayLabel, value, pathKey, !!filter, nodeMatches, isBranch);
 				header.appendChild(button);
 				li.appendChild(header);
 
@@ -1738,15 +1912,14 @@ export class JsonEditorPanel implements vscode.Disposable {
 				parent.appendChild(li);
 			}
 
-			function createNodeButton(rawKey, displayLabel, value, pathKey, filter, isBranch) {
+			function createNodeButton(rawKey, displayLabel, value, pathKey, hasFilter, nodeMatches, isBranch) {
 				const button = document.createElement('button');
 				button.className = 'node-label';
 				button.type = 'button';
 				button.dataset.path = pathKey || '';
 				button.dataset.branch = String(isBranch);
 				const textValue = isBranch ? '' : formatValue(value);
-				const combined = (displayLabel + ' ' + rawKey + ' ' + textValue).toLowerCase();
-				if (filter && !combined.includes(filter)) {
+				if (hasFilter && !nodeMatches) {
 					button.classList.add('dim');
 				}
 				const labelText = displayLabel || rawKey;
@@ -2381,11 +2554,180 @@ export class JsonEditorPanel implements vscode.Disposable {
 				return String(value);
 			}
 
-			function matchesFilter(displayLabel, rawKey, textValue, filter) {
-				if (!filter) {
+			function compileFilter(rawText) {
+				if (searchBox) {
+					searchBox.classList.remove('search-error');
+					searchBox.removeAttribute('title');
+				}
+				const raw = typeof rawText === 'string' ? rawText.trim() : '';
+				if (!raw) {
+					return null;
+				}
+				const flags = searchState.matchCase ? '' : 'i';
+				const wholeWord = searchState.wholeWord;
+				try {
+					if (searchState.useRegex) {
+						const pattern = wholeWord ? wrapWithWordBoundaries(raw) : raw;
+						return {
+							raw,
+							regex: new RegExp(pattern, flags),
+							pathRegex: buildPathSearchRegex(raw, true, searchState.matchCase),
+							hasError: false
+						};
+					}
+					const escaped = escapeForRegex(raw);
+					// Avoid nested template literals inside the HTML string.
+					const pattern = wholeWord ? '\\b' + escaped + '\\b' : escaped;
+					return {
+						raw,
+						regex: new RegExp(pattern, flags),
+						// In literal mode, avoid pathRegex to prevent regex semantics on paths; rely on escaped regex above.
+						pathRegex: undefined,
+						hasError: false
+					};
+				} catch (error) {
+					if (searchBox) {
+						searchBox.classList.add('search-error');
+						searchBox.title = 'Invalid regular expression';
+					}
+					return { hasError: true };
+				}
+			}
+
+			function matchesFilter(context, filter) {
+				if (!filter || filter.hasError) {
 					return true;
 				}
-				return (displayLabel + ' ' + rawKey + ' ' + textValue).toLowerCase().includes(filter);
+				const { rawKey, displayLabel, textValue, pathKey, schemaEntry, segments } = context;
+				if (filter.pathRegex) {
+					if (filter.pathRegex.test(pathKey || '')) {
+						return true;
+					}
+					const labelPath = getLabelPathFromSegments(segments);
+					if (labelPath && filter.pathRegex.test(labelPath)) {
+						return true;
+					}
+				}
+				if (!filter.regex) {
+					return true;
+				}
+				const candidates = [
+					rawKey,
+					pathKey,
+					displayLabel,
+					schemaEntry?.label,
+					schemaEntry?.description,
+					textValue
+				].filter(Boolean);
+				for (const entry of candidates) {
+					if (filter.regex.test(String(entry))) {
+						return true;
+					}
+				}
+				return false;
+			}
+
+			function escapeForRegex(value) {
+				// Escape regex control characters; backslash keeps the dollar brace literal.
+				return value.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+			}
+
+			function buildPathSearchRegex(raw, isRegex, matchCase) {
+				const segments = derivePathSegments(raw, isRegex);
+				if (!segments || segments.length === 0) {
+					return undefined;
+				}
+				if (isRegex) {
+					try {
+						return new RegExp(segments.join('\\.'), matchCase ? '' : 'i');
+					} catch (error) {
+						return undefined;
+					}
+				}
+
+				// Literal search: match only at segment boundaries to avoid partial hits like ".dir" matching "direct".
+				const escapedSegments = segments.map((segment) => escapeForRegex(segment)).join('\\.');
+				const boundedPattern = '(?:^|\\.)' + escapedSegments + '(?:\\.|$)';
+				try {
+					return new RegExp(boundedPattern, matchCase ? '' : 'i');
+				} catch (error) {
+					return undefined;
+				}
+			}
+
+			function derivePathSegments(raw, isRegex) {
+				if (!raw) {
+					return undefined;
+				}
+				if (isRegex) {
+					const separator = /\\\./;
+					if (!separator.test(raw)) {
+						return undefined;
+					}
+					const parts = raw.split(separator).filter((part) => part.length > 0);
+					return parts.length > 0 ? parts : undefined;
+				}
+
+				// Literal search: split on unescaped dots only so "\." stays literal.
+				const parts = [];
+				let buffer = '';
+				let escaped = false;
+				for (let i = 0; i < raw.length; i++) {
+					const ch = raw[i];
+					if (escaped) {
+						buffer += ch;
+						escaped = false;
+						continue;
+					}
+					if (ch === '\\') {
+						escaped = true;
+						buffer += ch;
+						continue;
+					}
+					if (ch === '.') {
+						if (buffer.length > 0) {
+							parts.push(buffer);
+						}
+						buffer = '';
+						continue;
+					}
+					buffer += ch;
+				}
+				if (buffer.length > 0) {
+					parts.push(buffer);
+				}
+				return parts.length > 0 ? parts : undefined;
+			}
+
+			function getLabelPathFromSegments(segments) {
+				if (!segments || segments.length === 0) {
+					return '';
+				}
+				const cacheKey = buildPathKey(segments);
+				if (labelPathCache.has(cacheKey)) {
+					return labelPathCache.get(cacheKey);
+				}
+				const accumulated = [];
+				const labels = [];
+				for (const segment of segments) {
+					accumulated.push(segment);
+					const pathKey = buildPathKey(accumulated);
+					const entry = schema[pathKey];
+					if (entry?.label) {
+						labels.push(entry.label);
+					} else if (typeof segment === 'number') {
+						labels.push('[' + segment + ']');
+					} else {
+						labels.push(String(segment));
+					}
+				}
+				const value = labels.join('.');
+				labelPathCache.set(cacheKey, value);
+				return value;
+			}
+
+			function wrapWithWordBoundaries(pattern) {
+				return '\\b(?:' + pattern + ')\\b';
 			}
 
 			function isContainer(value) {
