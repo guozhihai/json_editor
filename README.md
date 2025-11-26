@@ -19,6 +19,10 @@ JSON/JSONC の設定ファイルを "ツリー + フォーム" で編集する V
    - 型ヒント（`string` / `enum` / `integer` / `number` / `boolean`）。
 5. **配列ノード操作**: Add/Clone/Remove で要素を追加・複製・削除。スキーマ未定義でも型と値を選んで挿入可能。
 
+### Search (概要)
+- 検索ボックス内のトグルで Case / Whole Word / Regex を切り替え。
+- キー・値に加え、スキーマのラベル/説明やラベル経路（例: `MicroSpot.dir`）も検索対象。
+
 ## Getting Started
 
 ### Explorer ツリービュー
